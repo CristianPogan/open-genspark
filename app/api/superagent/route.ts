@@ -684,9 +684,17 @@ export async function POST(req: NextRequest) {
             console.log(`[${requestId}] Fetching GOOGLESLIDES toolkit...`);
             google_slides_tools = await composio.tools.get(String(userId), {
                 toolkits: ['GOOGLESLIDES'],
-                limit: 10
             });
             console.log(`[${requestId}] ✅ GOOGLESLIDES toolkit:`, Object.keys(google_slides_tools).length, 'tools');
+            console.log(`[${requestId}] GOOGLESLIDES tool names:`, Object.keys(google_slides_tools).slice(0, 5));
+            
+            // Log tool details for debugging
+            Object.entries(google_slides_tools).slice(0, 3).forEach(([key, tool]: [string, any]) => {
+                console.log(`[${requestId}] GOOGLESLIDES tool ${key}:`, {
+                    name: tool?.name,
+                    slug: tool?.slug
+                });
+            });
         } catch (error: any) {
             console.warn(`[${requestId}] ⚠️ Failed to get GOOGLESLIDES tools:`, error?.message);
             console.warn(`[${requestId}] GOOGLESLIDES error details:`, {
@@ -694,6 +702,8 @@ export async function POST(req: NextRequest) {
                 code: error?.code,
                 message: error?.message
             });
+            // Don't fail the request - tools might not be available, but we'll handle errors when tools are used
+            google_slides_tools = {};
         }
         
         try {
@@ -907,34 +917,27 @@ Updating google docs means updating the markdown of the document/ deleting all c
             // Ensure tools is properly formatted - if empty, pass undefined instead of empty object
             const toolsToUse = Object.keys(allTools).length > 0 ? allTools : undefined;
             
-            // Set timeout to prevent H12 errors (Heroku has 30s timeout, we'll use 25s as safety margin)
-            const TIMEOUT_MS = 25000; // 25 seconds
+            // Wait for the actual response - don't artificially timeout
+            // Heroku has a 30s timeout, but we'll let requests complete naturally
+            // If they exceed 30s, Heroku will return H12, which we'll handle gracefully
+            console.log(`[${requestId}] Starting AI generation (no artificial timeout - waiting for completion)...`);
             
-            const generateTextPromise = generateText({
+            const result = await generateText({
                 model: google('gemini-2.5-pro'),
                 system: systemPrompt,
                 messages,
                 tools: toolsToUse,
                 maxSteps: 50,
             });
-            
-            // Race between the actual request and a timeout
-            const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => {
-                    reject(new Error('Request timeout: AI generation took longer than 25 seconds. Please try again with a simpler request.'));
-                }, TIMEOUT_MS);
-            });
-            
-            const result = await Promise.race([generateTextPromise, timeoutPromise]) as any;
             const aiDuration = Date.now() - aiStartTime;
             text = result.text;
             toolCalls = result.toolCalls || [];
             toolResults = result.toolResults || [];
             console.log(`[${requestId}] ✅ AI response generated in ${aiDuration}ms`);
             
-            // Warn if approaching timeout
-            if (aiDuration > 20000) {
-                console.warn(`[${requestId}] ⚠️ AI generation took ${aiDuration}ms - approaching timeout limit`);
+            // Warn if approaching Heroku's 30s limit
+            if (aiDuration > 25000) {
+                console.warn(`[${requestId}] ⚠️ AI generation took ${aiDuration}ms - approaching Heroku's 30s limit`);
             }
             console.log(`[${requestId}] Response length:`, text?.length);
             console.log(`[${requestId}] Tool calls:`, toolCalls.length);
@@ -943,11 +946,23 @@ Updating google docs means updating the markdown of the document/ deleting all c
             const errorDuration = Date.now() - aiStartTime;
             console.error(`[${requestId}] ❌ Error generating text after ${errorDuration}ms:`, error);
             
-            // Handle timeout errors specifically
-            if (error?.message?.includes('timeout') || error?.message?.includes('Request timeout')) {
+            // Handle timeout errors specifically (H12 from Heroku)
+            // Note: We removed artificial timeout, so this will only catch actual Heroku H12 errors
+            if (error?.message?.includes('timeout') || 
+                error?.message?.includes('Request timeout') ||
+                error?.status === 503 ||
+                error?.code === 'H12') {
                 console.error(`[${requestId}] Request timeout detected after ${errorDuration}ms`);
+                // If request took >30s, it's likely an H12 error from Heroku
+                if (errorDuration > 30000) {
+                    return createResponse({
+                        response: `The request took longer than 30 seconds and was canceled by the server. This can happen with very complex requests. Please try:\n\n1. Breaking your request into smaller parts\n2. Using simpler, more direct questions\n3. Trying again - sometimes the AI needs a moment\n\nIf this persists, the request may be too complex for the current setup.`,
+                        hasSlides: false,
+                    }, userId, newCookie);
+                }
+                // Otherwise, it's a different timeout issue
                 return createResponse({
-                    response: `The request took too long to process (${Math.round(errorDuration/1000)}s). This can happen with complex requests. Please try:\n\n1. Breaking your request into smaller parts\n2. Using simpler, more direct questions\n3. Trying again - sometimes the AI needs a moment\n\nIf this persists, the request may be too complex for the current setup.`,
+                    response: `The request timed out (${Math.round(errorDuration/1000)}s). Please try again with a simpler request.`,
                     hasSlides: false,
                 }, userId, newCookie);
             }
