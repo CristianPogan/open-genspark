@@ -873,10 +873,10 @@ Updating google docs means updating the markdown of the document/ deleting all c
         let text: string;
         let toolCalls: any[] = [];
         let toolResults: any[] = [];
+        const aiStartTime = Date.now(); // Declare before try block for error handling
         
         try {
             console.log(`[${requestId}] Calling generateText with Gemini 2.5 Pro...`);
-            const aiStartTime = Date.now();
             
             // Ensure tools is properly formatted - if empty, pass undefined instead of empty object
             const toolsToUse = Object.keys(allTools).length > 0 ? allTools : undefined;
