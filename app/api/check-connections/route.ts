@@ -24,11 +24,16 @@ export async function GET(req: NextRequest) {
         let connectedAccounts: any[] = [];
         try {
             const accountsList = await composio.connectedAccounts.list({
-                userId: userId
+                userIds: [userId] // Use userIds (plural) array instead of userId
             });
             connectedAccounts = Array.isArray(accountsList) ? accountsList : [];
         } catch (error: any) {
             console.error('Error listing accounts:', error);
+            console.error('Error details:', {
+                message: error?.message,
+                status: error?.status,
+                code: error?.code
+            });
             // Try alternative method - get accounts by checking toolkits
         }
 
