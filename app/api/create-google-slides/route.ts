@@ -45,6 +45,21 @@ export async function POST(req: NextRequest) {
         console.log(`[${requestId}] Slide count:`, slides.length);
         console.log(`[${requestId}] Title:`, title);
         
+        // Check if user has connected Google Slides account
+        let hasConnectedAccount = false;
+        try {
+            console.log(`[${requestId}] Checking connected accounts for userId:`, finalUserId);
+            const connectedAccounts = await composio.connectedAccounts.list({
+                userIds: [String(finalUserId)],
+                toolkitSlug: 'GOOGLESLIDES'
+            });
+            hasConnectedAccount = connectedAccounts && connectedAccounts.length > 0;
+            console.log(`[${requestId}] Connected Google Slides accounts:`, hasConnectedAccount ? connectedAccounts.length : 0);
+        } catch (checkError: any) {
+            console.warn(`[${requestId}] ⚠️ Could not check connected accounts:`, checkError?.message);
+            // Continue anyway - will fail later if no connection
+        }
+        
         // Get Google Slides tools
         let googleSlidesTools: any = {};
         try {
@@ -55,11 +70,32 @@ export async function POST(req: NextRequest) {
             console.log(`[${requestId}] ✅ GOOGLESLIDES toolkit:`, Object.keys(googleSlidesTools).length, 'tools');
         } catch (error: any) {
             console.error(`[${requestId}] ❌ Failed to get GOOGLESLIDES tools:`, error?.message);
+            
+            // Check if it's an authentication/connection error
+            const isAuthError = error?.status === 401 || 
+                               error?.status === 403 ||
+                               error?.message?.toLowerCase().includes('not connected') ||
+                               error?.message?.toLowerCase().includes('authentication') ||
+                               error?.message?.toLowerCase().includes('unauthorized');
+            
+            if (isAuthError || !hasConnectedAccount) {
+                return NextResponse.json(
+                    { 
+                        error: 'Your Google account is not connected. Please sign in to create Google Slides.',
+                        details: error?.message,
+                        suggestion: 'Visit /signin to connect your Google Slides account.',
+                        userId: finalUserId
+                    },
+                    { status: 401 }
+                );
+            }
+            
             return NextResponse.json(
                 { 
-                    error: 'Failed to access Google Slides tools. Please ensure your Google account is connected.',
+                    error: 'Failed to access Google Slides tools.',
                     details: error?.message,
-                    suggestion: 'Visit /signin to connect your Google Slides account.'
+                    suggestion: 'Please check your Google account connection or try again later.',
+                    requestId
                 },
                 { status: 500 }
             );
