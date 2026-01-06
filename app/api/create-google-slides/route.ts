@@ -103,7 +103,9 @@ export async function POST(req: NextRequest) {
         }
         
         // Check if we have the create presentation tool
+        // Look for the actual tool name: GOOGLESLIDES_PRESENTATIONS_CREATE
         const createTool = Object.values(googleSlidesTools).find((tool: any) => 
+            tool?.slug === 'GOOGLESLIDES_PRESENTATIONS_CREATE' ||
             tool?.name?.toLowerCase().includes('create') || 
             tool?.name?.toLowerCase().includes('presentation') ||
             tool?.slug?.toLowerCase().includes('create')
@@ -113,17 +115,22 @@ export async function POST(req: NextRequest) {
             console.error(`[${requestId}] ❌ No create presentation tool found`);
             console.log(`[${requestId}] Available tools:`, Object.keys(googleSlidesTools));
             
-            // Try to use GOOGLESLIDES_CREATE_PRESENTATION directly
+            // Try to use GOOGLESLIDES_PRESENTATIONS_CREATE directly (correct tool name)
             try {
                 const createPresentationTool = await composio.tools.get(String(finalUserId), {
-                    tools: ['GOOGLESLIDES_CREATE_PRESENTATION']
+                    tools: ['GOOGLESLIDES_PRESENTATIONS_CREATE']
                 });
                 
                 if (Object.keys(createPresentationTool).length > 0) {
                     const tool = Object.values(createPresentationTool)[0] as any;
-                    console.log(`[${requestId}] ✅ Found GOOGLESLIDES_CREATE_PRESENTATION tool`);
+                    console.log(`[${requestId}] ✅ Found GOOGLESLIDES_PRESENTATIONS_CREATE tool`);
+                    console.log(`[${requestId}] Tool details:`, {
+                        name: tool?.name,
+                        slug: tool?.slug,
+                        hasExecute: typeof tool?.execute === 'function'
+                    });
                     
-                    // Create the presentation
+                    // Create the presentation - check tool documentation for correct parameters
                     const presentationResult = await tool.execute({
                         title: title || 'AI Generated Presentation',
                     });
