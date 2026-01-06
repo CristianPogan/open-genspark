@@ -384,25 +384,71 @@ export default function SuperAgent({ className, userId }: SuperAgentProps) {
       const detectedSlidesUrl = detectSlidesUrl(msg);
       const slidesId = detectedSlidesUrl ? extractSlidesId(detectedSlidesUrl) : undefined;
 
+      const requestPayload = {
+        prompt: msg,
+        selectedTool: selectedTool.id,
+        conversationHistory: messages,
+        userId: userId,
+        sheetUrl: detectedSheetUrl || (isSheetConnected ? sheetUrl : undefined),
+        docUrl: detectedDocUrl || (isDocConnected ? docUrl : undefined),
+        slidesUrl: detectedSlidesUrl,
+        slidesId: slidesId,
+      };
+
+      console.log('[SuperAgent] 🚀 Starting API request:', {
+        url: '/api/superagent',
+        method: 'POST',
+        payloadKeys: Object.keys(requestPayload),
+        promptLength: msg.length,
+        hasUserId: !!userId,
+        timestamp: new Date().toISOString()
+      });
+
+      const startTime = Date.now();
+      
       // Send to SuperAgent route
       const response = await fetch('/api/superagent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: msg,
-          selectedTool: selectedTool.id,
-          conversationHistory: messages,
-          userId: userId,
-          sheetUrl: detectedSheetUrl || (isSheetConnected ? sheetUrl : undefined),
-          docUrl: detectedDocUrl || (isDocConnected ? docUrl : undefined),
-          slidesUrl: detectedSlidesUrl,
-          slidesId: slidesId,
-        }),
+        body: JSON.stringify(requestPayload),
       });
 
-      if (!response.ok) throw new Error('API response was not ok.');
+      const fetchDuration = Date.now() - startTime;
+      console.log('[SuperAgent] 📡 API Response received:', {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok,
+        duration: `${fetchDuration}ms`,
+        headers: Object.fromEntries(response.headers.entries())
+      });
+
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+          console.error('[SuperAgent] ❌ API Error Response:', errorData);
+        } catch (e) {
+          const text = await response.text();
+          console.error('[SuperAgent] ❌ API Error (non-JSON):', {
+            status: response.status,
+            statusText: response.statusText,
+            body: text.substring(0, 500)
+          });
+          errorData = { error: `Server error: ${response.status} ${response.statusText}` };
+        }
+        
+        throw new Error(errorData?.error || `API response was not ok: ${response.status} ${response.statusText}`);
+      }
       
+      console.log('[SuperAgent] ✅ Parsing response JSON...');
       let data = await response.json();
+      console.log('[SuperAgent] ✅ Response parsed successfully:', {
+        hasResponse: !!data.response,
+        responseLength: data.response?.length,
+        hasSlides: !!data.hasSlides,
+        slidesCount: data.slides?.length,
+        keys: Object.keys(data)
+      });
 
       // Check for the [SLIDES] command
       if (data.response && data.response.includes('[SLIDES]')) {

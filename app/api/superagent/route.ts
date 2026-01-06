@@ -413,8 +413,18 @@ function createResponse(data: any, userId?: string, setCookie: boolean = false):
 
 export async function POST(req: NextRequest) {
     const requestId = Math.random().toString(36).substring(7);
+    const startTime = Date.now();
     console.log(`[${requestId}] ========== SuperAgent Request Started ==========`);
     console.log(`[${requestId}] Timestamp:`, new Date().toISOString());
+    console.log(`[${requestId}] Request URL:`, req.url);
+    console.log(`[${requestId}] Request method:`, req.method);
+    console.log(`[${requestId}] Node version:`, process.version);
+    console.log(`[${requestId}] Environment:`, process.env.NODE_ENV);
+    console.log(`[${requestId}] Request headers:`, {
+        'content-type': req.headers.get('content-type'),
+        'user-agent': req.headers.get('user-agent'),
+        'host': req.headers.get('host'),
+    });
     
     try {
         // Parse request body with error handling
@@ -987,12 +997,18 @@ Updating google docs means updating the markdown of the document/ deleting all c
         }
         
         // Generic error
-        console.error(`[${requestId}] Returning generic 500 error response`);
+        const errorDuration = Date.now() - startTime;
+        console.error(`[${requestId}] Returning generic 500 error response after ${errorDuration}ms`);
+        console.error(`[${requestId}] Error type:`, error?.constructor?.name);
+        console.error(`[${requestId}] Error name:`, error?.name);
+        console.error(`[${requestId}] Error cause:`, error?.cause);
+        
         return NextResponse.json(
             { 
                 error: 'Failed to process your request. Please try again.',
                 details: process.env.NODE_ENV === 'development' ? error?.message : 'Check server logs for details',
-                requestId: requestId
+                requestId: requestId,
+                duration: errorDuration
             },
             { status: 500 }
         );
