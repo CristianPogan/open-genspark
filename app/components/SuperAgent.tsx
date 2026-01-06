@@ -196,7 +196,7 @@ const MessageBubble = ({ message, activeSlide, setActiveSlide, downloadAsPPT, sa
                   ))}
                 </div>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <button
                   onClick={() => setActiveSlide(Math.max(0, activeSlide - 1))}
                   disabled={activeSlide === 0}
@@ -227,6 +227,7 @@ const MessageBubble = ({ message, activeSlide, setActiveSlide, downloadAsPPT, sa
                 <button
                   onClick={saveToGoogleDrive}
                   className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-green-500 to-green-600 rounded-lg hover:from-green-600 hover:to-green-700 transition-all duration-200 shadow-sm hover:shadow-md"
+                  title="Save presentation to Google Drive as Google Slides"
                 >
                   <FiCloud className="w-4 h-4" />
                   Save to Google Drive
