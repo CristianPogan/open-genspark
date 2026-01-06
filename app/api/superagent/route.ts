@@ -457,6 +457,31 @@ export async function POST(req: NextRequest) {
             );
         }
         
+        // Check for required environment variables
+        if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
+            console.error(`[${requestId}] ❌ GOOGLE_GENERATIVE_AI_API_KEY is missing`);
+            return NextResponse.json(
+                { 
+                    error: 'Missing GOOGLE_GENERATIVE_AI_API_KEY environment variable. Please set it in Vercel settings.',
+                    requestId: requestId
+                },
+                { status: 500 }
+            );
+        }
+        
+        if (!process.env.COMPOSIO_API_KEY) {
+            console.error(`[${requestId}] ❌ COMPOSIO_API_KEY is missing`);
+            return NextResponse.json(
+                { 
+                    error: 'Missing COMPOSIO_API_KEY environment variable. Please set it in Vercel settings.',
+                    requestId: requestId
+                },
+                { status: 500 }
+            );
+        }
+        
+        console.log(`[${requestId}] ✅ Environment variables check passed`);
+        
         // Get userId from cookies or request body, generate one if missing
         const cookieUserId = req.cookies.get('googlesheet_user_id')?.value || 
                              req.cookies.get('googledoc_user_id')?.value;
