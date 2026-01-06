@@ -1086,10 +1086,15 @@ Updating google docs means updating the markdown of the document/ deleting all c
             else if (toolName.includes('GOOGLESHEETS')) toolkitName = 'Google Sheets';
             else if (toolName.includes('GOOGLEDOCS')) toolkitName = 'Google Docs';
             
+            // Get userId from request for cookie setting
+            const cookieUserId = req.cookies.get('googlesheet_user_id')?.value || 
+                               req.cookies.get('googledoc_user_id')?.value;
+            const finalUserId = cookieUserId || bodyUserId || Math.floor(1000000000 + Math.random() * 9000000000).toString();
+            
             return createResponse({
                 response: `I tried to use ${toolkitName}, but your account isn't connected. Please visit /signin to connect your ${toolkitName} account, then try again.`,
                 hasSlides: false,
-            }, userId, newCookie);
+            }, finalUserId, !cookieUserId);
         }
         
         // Check for missing environment variables
