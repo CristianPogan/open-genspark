@@ -248,37 +248,81 @@ const MessageBubble = ({ message, activeSlide, setActiveSlide, downloadAsPPT, sa
 };
 
 export default function SuperAgent({ className, userId }: SuperAgentProps) {
-  // Suppress browser extension errors
+  // Suppress browser extension errors - must run early to catch all errors
   useEffect(() => {
+    // Store original console methods
     const originalError = window.console.error;
+    const originalWarn = window.console.warn;
+    
+    // Override console.error to filter extension errors
     window.console.error = (...args: any[]) => {
-      // Suppress browser extension errors (content_script.js)
-      const errorString = args.join(' ');
+      const errorString = String(args.join(' ')).toLowerCase();
+      
+      // Suppress browser extension errors
       if (errorString.includes('content_script.js') || 
-          errorString.includes('Cannot read properties of undefined') ||
-          errorString.includes('reading \'control\'')) {
+          errorString.includes('cannot read properties of undefined') ||
+          errorString.includes('reading \'control\'') ||
+          errorString.includes('reading "control"') ||
+          errorString.includes('shouldoffercompletionlistforfield') ||
+          errorString.includes('elementwasfocused') ||
+          errorString.includes('focusineventhandler')) {
         // Silently ignore browser extension errors
         return;
       }
+      
       // Log other errors normally
       originalError.apply(window.console, args);
     };
+    
+    // Override console.warn for extension warnings too
+    window.console.warn = (...args: any[]) => {
+      const warnString = String(args.join(' ')).toLowerCase();
+      
+      if (warnString.includes('content_script.js') || 
+          warnString.includes('cannot read properties of undefined')) {
+        return;
+      }
+      
+      originalWarn.apply(window.console, args);
+    };
 
-    // Also suppress unhandled promise rejections from extensions
+    // Suppress unhandled promise rejections from extensions
     const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
-      const errorString = event.reason?.toString() || '';
+      const errorString = String(event.reason || '').toLowerCase();
+      const stackString = String(event.reason?.stack || '').toLowerCase();
+      
       if (errorString.includes('content_script.js') || 
-          errorString.includes('Cannot read properties of undefined')) {
+          stackString.includes('content_script.js') ||
+          errorString.includes('cannot read properties of undefined') ||
+          errorString.includes('reading \'control\'') ||
+          errorString.includes('reading "control"')) {
+        event.preventDefault(); // Suppress the error
+        return;
+      }
+    };
+    
+    // Suppress uncaught errors from extensions
+    const handleError = (event: ErrorEvent) => {
+      const errorString = String(event.message || '').toLowerCase();
+      const filename = String(event.filename || '').toLowerCase();
+      
+      if (filename.includes('content_script.js') ||
+          errorString.includes('cannot read properties of undefined') ||
+          errorString.includes('reading \'control\'') ||
+          errorString.includes('reading "control"')) {
         event.preventDefault(); // Suppress the error
         return;
       }
     };
     
     window.addEventListener('unhandledrejection', handleUnhandledRejection);
+    window.addEventListener('error', handleError);
 
     return () => {
       window.console.error = originalError;
+      window.console.warn = originalWarn;
       window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+      window.removeEventListener('error', handleError);
     };
   }, []);
 

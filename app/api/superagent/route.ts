@@ -1076,6 +1076,24 @@ Updating google docs means updating the markdown of the document/ deleting all c
             );
         }
         
+        // Check if it's an expired API key error
+        if (error?.message?.toLowerCase().includes('expired') || 
+            error?.message?.toLowerCase().includes('expire') ||
+            error?.message?.toLowerCase().includes('renew') ||
+            error?.response?.data?.message?.toLowerCase().includes('expired') ||
+            error?.response?.data?.message?.toLowerCase().includes('renew')) {
+            console.error(`[${requestId}] Expired API key detected`);
+            return NextResponse.json(
+                { 
+                    error: 'Your Composio API key has expired and needs to be renewed.',
+                    details: error?.message || error?.response?.data?.message || 'API key expired. Please renew the API key.',
+                    suggestion: '1. Go to https://app.composio.dev/settings/api-keys\n2. Find your current API key\n3. Click "Renew" or generate a new API key\n4. Update COMPOSIO_API_KEY in your Heroku/Vercel environment variables\n5. Restart your application',
+                    requestId: requestId
+                },
+                { status: 401 }
+            );
+        }
+        
         // Check if it's a leaked API key error
         if (error?.message?.toLowerCase().includes('leaked') || 
             error?.message?.toLowerCase().includes('reported as leaked') ||
