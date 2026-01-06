@@ -10,24 +10,15 @@ console.log('🔧 Initializing Composio SDK...');
 console.log('🔧 COMPOSIO_API_KEY present:', !!process.env.COMPOSIO_API_KEY);
 console.log('🔧 COMPOSIO_API_KEY length:', process.env.COMPOSIO_API_KEY?.length || 0);
 
-let composio: Composio;
-try {
-    if (!process.env.COMPOSIO_API_KEY) {
-        console.error('❌ COMPOSIO_API_KEY is not set in environment variables');
-    }
-    composio = new Composio({
-        apiKey: process.env.COMPOSIO_API_KEY || '',
-        provider: new VercelProvider()
-    });
-    console.log('✅ Composio SDK initialized successfully');
-} catch (error: any) {
-    console.error('❌ Failed to initialize Composio:', error);
-    console.error('Composio init error details:', {
-        message: error?.message,
-        stack: error?.stack
-    });
-    throw new Error('Composio initialization failed. Please check your API key.');
+const composio = new Composio({
+    apiKey: process.env.COMPOSIO_API_KEY || '',
+    provider: new VercelProvider()
+});
+
+if (!process.env.COMPOSIO_API_KEY) {
+    console.error('❌ COMPOSIO_API_KEY is not set in environment variables');
 }
+console.log('✅ Composio SDK initialized successfully');
 
 // Fixed HTML templates for different slide types
 function generateSlideHTML(slide: any, style: string = 'professional') {
