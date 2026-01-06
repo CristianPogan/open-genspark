@@ -1089,12 +1089,17 @@ Updating google docs means updating the markdown of the document/ deleting all c
             // Get userId from request for cookie setting
             const cookieUserId = req.cookies.get('googlesheet_user_id')?.value || 
                                req.cookies.get('googledoc_user_id')?.value;
-            const finalUserId = cookieUserId || bodyUserId || Math.floor(1000000000 + Math.random() * 9000000000).toString();
+            let finalUserId = cookieUserId;
+            let needsCookie = false;
+            if (!finalUserId) {
+                finalUserId = Math.floor(1000000000 + Math.random() * 9000000000).toString();
+                needsCookie = true;
+            }
             
             return createResponse({
                 response: `I tried to use ${toolkitName}, but your account isn't connected. Please visit /signin to connect your ${toolkitName} account, then try again.`,
                 hasSlides: false,
-            }, finalUserId, !cookieUserId);
+            }, finalUserId, needsCookie);
         }
         
         // Check for missing environment variables
