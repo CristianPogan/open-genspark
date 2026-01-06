@@ -853,6 +853,12 @@ Updating google docs means updating the markdown of the document/ deleting all c
         console.log(`[${requestId}] Message count:`, messages.length);
         console.log(`[${requestId}] System prompt length:`, systemPrompt.length);
         console.log(`[${requestId}] Available tools:`, Object.keys(allTools).length);
+        console.log(`[${requestId}] Tool names:`, Object.keys(allTools).slice(0, 10));
+        
+        // Validate tools object - ensure it's not empty and is properly formatted
+        if (Object.keys(allTools).length === 0) {
+            console.warn(`[${requestId}] ⚠️ No tools available, proceeding without tools`);
+        }
         
         let text: string;
         let toolCalls: any[] = [];
@@ -861,11 +867,15 @@ Updating google docs means updating the markdown of the document/ deleting all c
         try {
             console.log(`[${requestId}] Calling generateText with Gemini 2.5 Pro...`);
             const startTime = Date.now();
+            
+            // Ensure tools is properly formatted - if empty, pass undefined instead of empty object
+            const toolsToUse = Object.keys(allTools).length > 0 ? allTools : undefined;
+            
             const result = await generateText({
                 model: google('gemini-2.5-pro'),
                 system: systemPrompt,
                 messages,
-                tools: allTools,
+                tools: toolsToUse,
                 maxSteps: 50,
             });
             const duration = Date.now() - startTime;
