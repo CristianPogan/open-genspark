@@ -765,6 +765,7 @@ Updating google docs means updating the markdown of the document/ deleting all c
 `;
 
         // Build messages array with system prompt and conversation history
+        console.log(`[${requestId}] Building messages array...`);
         const messages: any[] = [
             {
                 role: 'system',
@@ -773,8 +774,11 @@ Updating google docs means updating the markdown of the document/ deleting all c
         ];
 
         // Add conversation history if available
-        if (conversationHistory && conversationHistory.length > 0) {
+        if (conversationHistory && Array.isArray(conversationHistory) && conversationHistory.length > 0) {
+            console.log(`[${requestId}] Adding ${conversationHistory.length} conversation history messages`);
             messages.push(...conversationHistory);
+        } else {
+            console.log(`[${requestId}] No conversation history provided`);
         }
 
         // Add current user message
@@ -782,6 +786,8 @@ Updating google docs means updating the markdown of the document/ deleting all c
             role: 'user',
             content: prompt
         });
+        
+        console.log(`[${requestId}] Total messages:`, messages.length);
 
         // Generate response with error handling
         console.log(`[${requestId}] Preparing to generate AI response...`);
@@ -860,8 +866,16 @@ Updating google docs means updating the markdown of the document/ deleting all c
         console.error(`[${requestId}] Error status:`, error?.status);
         console.error(`[${requestId}] Error code:`, error?.code);
         console.error(`[${requestId}] Error response:`, error?.response);
-        console.error(`[${requestId}] Full error object:`, JSON.stringify(error, Object.getOwnPropertyNames(error)).substring(0, 1000));
-        console.error(`[${requestId}] Stack trace:`, error?.stack);
+        
+        // Safely stringify error for logging
+        try {
+            const errorString = JSON.stringify(error, Object.getOwnPropertyNames(error)).substring(0, 2000);
+            console.error(`[${requestId}] Full error object:`, errorString);
+        } catch (stringifyError) {
+            console.error(`[${requestId}] Could not stringify error object`);
+        }
+        
+        console.error(`[${requestId}] Stack trace:`, error?.stack?.substring(0, 1000));
         console.error(`[${requestId}] ========== Request Failed ==========`);
         
         // Check if it's an authentication error
@@ -870,19 +884,34 @@ Updating google docs means updating the markdown of the document/ deleting all c
             return NextResponse.json(
                 { 
                     error: 'Authentication failed. Please check your Composio API key and ensure your accounts are properly connected.',
-                    details: 'Visit /signin to connect your Google accounts, or check your environment variables.'
+                    details: 'Visit /signin to connect your Google accounts, or check your environment variables.',
+                    requestId: requestId
                 },
                 { status: 401 }
             );
         }
         
         // Check if it's a Composio API key error
-        if (error?.message?.includes('API key') || error?.message?.includes('authentication')) {
+        if (error?.message?.includes('API key') || error?.message?.includes('authentication') || error?.message?.includes('COMPOSIO')) {
             console.error(`[${requestId}] Returning API key error response`);
             return NextResponse.json(
                 { 
                     error: 'Composio API key error. Please verify your COMPOSIO_API_KEY environment variable is set correctly.',
-                    details: error.message
+                    details: error.message,
+                    requestId: requestId
+                },
+                { status: 500 }
+            );
+        }
+        
+        // Check for missing environment variables
+        if (error?.message?.includes('GOOGLE') || error?.message?.includes('API_KEY')) {
+            console.error(`[${requestId}] Returning environment variable error response`);
+            return NextResponse.json(
+                { 
+                    error: 'Missing required environment variables. Please check your Vercel environment settings.',
+                    details: error.message,
+                    requestId: requestId
                 },
                 { status: 500 }
             );
@@ -893,7 +922,8 @@ Updating google docs means updating the markdown of the document/ deleting all c
         return NextResponse.json(
             { 
                 error: 'Failed to process your request. Please try again.',
-                details: process.env.NODE_ENV === 'development' ? error?.message : undefined
+                details: process.env.NODE_ENV === 'development' ? error?.message : 'Check server logs for details',
+                requestId: requestId
             },
             { status: 500 }
         );
