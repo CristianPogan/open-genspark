@@ -5,10 +5,29 @@ import { generateText, generateObject } from 'ai';
 import { google } from "@ai-sdk/google";
 import { z } from 'zod';
 
-const composio = new Composio({
-    apiKey: process.env.COMPOSIO_API_KEY,
-    provider: new VercelProvider()
-});
+// Initialize Composio with error handling
+console.log('🔧 Initializing Composio SDK...');
+console.log('🔧 COMPOSIO_API_KEY present:', !!process.env.COMPOSIO_API_KEY);
+console.log('🔧 COMPOSIO_API_KEY length:', process.env.COMPOSIO_API_KEY?.length || 0);
+
+let composio: Composio;
+try {
+    if (!process.env.COMPOSIO_API_KEY) {
+        console.error('❌ COMPOSIO_API_KEY is not set in environment variables');
+    }
+    composio = new Composio({
+        apiKey: process.env.COMPOSIO_API_KEY || '',
+        provider: new VercelProvider()
+    });
+    console.log('✅ Composio SDK initialized successfully');
+} catch (error: any) {
+    console.error('❌ Failed to initialize Composio:', error);
+    console.error('Composio init error details:', {
+        message: error?.message,
+        stack: error?.stack
+    });
+    throw new Error('Composio initialization failed. Please check your API key.');
+}
 
 // Fixed HTML templates for different slide types
 function generateSlideHTML(slide: any, style: string = 'professional') {
@@ -395,20 +414,74 @@ function createResponse(data: any, userId?: string, setCookie: boolean = false):
 }
 
 export async function POST(req: NextRequest) {
+    const requestId = Math.random().toString(36).substring(7);
+    console.log(`[${requestId}] ========== SuperAgent Request Started ==========`);
+    console.log(`[${requestId}] Timestamp:`, new Date().toISOString());
+    
     try {
-        const { prompt, selectedTool, conversationHistory, userId: bodyUserId, sheetUrl, docUrl } = await req.json();
+        // Parse request body with error handling
+        let requestBody;
+        try {
+            console.log(`[${requestId}] Parsing request body...`);
+            requestBody = await req.json();
+            console.log(`[${requestId}] Request body parsed successfully`);
+            console.log(`[${requestId}] Request body keys:`, Object.keys(requestBody || {}));
+        } catch (parseError: any) {
+            console.error(`[${requestId}] ❌ Failed to parse request body:`, parseError);
+            console.error(`[${requestId}] Parse error details:`, {
+                message: parseError?.message,
+                stack: parseError?.stack
+            });
+            return NextResponse.json(
+                { error: 'Invalid request body. Please check your input.' },
+                { status: 400 }
+            );
+        }
+
+        const { prompt, selectedTool, conversationHistory, userId: bodyUserId, sheetUrl, docUrl } = requestBody || {};
+        
+        console.log(`[${requestId}] Request parameters:`, {
+            hasPrompt: !!prompt,
+            promptLength: prompt?.length,
+            selectedTool,
+            conversationHistoryLength: conversationHistory?.length,
+            bodyUserId,
+            sheetUrl: !!sheetUrl,
+            docUrl: !!docUrl
+        });
+        
+        // Validate required fields
+        if (!prompt) {
+            console.error(`[${requestId}] ❌ Prompt is missing`);
+            return NextResponse.json(
+                { error: 'Prompt is required.' },
+                { status: 400 }
+            );
+        }
         
         // Get userId from cookies or request body, generate one if missing
-        let userId = req.cookies.get('googlesheet_user_id')?.value || 
-                     req.cookies.get('googledoc_user_id')?.value || 
-                     bodyUserId;
+        const cookieUserId = req.cookies.get('googlesheet_user_id')?.value || 
+                             req.cookies.get('googledoc_user_id')?.value;
+        
+        console.log(`[${requestId}] UserId sources:`, {
+            cookieUserId,
+            bodyUserId,
+            hasCookies: !!cookieUserId
+        });
+        
+        let userId = cookieUserId || bodyUserId;
         
         // Generate a temporary userId if none exists (for unauthenticated access)
         let newCookie = false;
         if (!userId) {
             userId = Math.floor(1000000000 + Math.random() * 9000000000).toString();
             newCookie = true;
+            console.log(`[${requestId}] ✅ Generated new userId:`, userId);
+        } else {
+            console.log(`[${requestId}] ✅ Using existing userId:`, userId);
         }
+        
+        console.log(`[${requestId}] Final userId:`, userId, `(newCookie: ${newCookie})`);
 
         // If a new sheet is connected, ask the user what to do next.
         if (sheetUrl && !conversationHistory.some((m: any) => m.content.includes('Spreadsheet Connected'))) {
@@ -433,9 +506,34 @@ export async function POST(req: NextRequest) {
             }, userId, newCookie);
         }
         
-        // Initialize the custom slide generation tool
-        await initializeSlideGenerationTool();
-        await initializePuppeteerTool();
+        // Initialize the custom slide generation tool (with error handling)
+        console.log(`[${requestId}] Initializing custom tools...`);
+        try {
+            console.log(`[${requestId}] Initializing slide generation tool...`);
+            await initializeSlideGenerationTool();
+            console.log(`[${requestId}] ✅ Slide generation tool initialized`);
+        } catch (error: any) {
+            console.warn(`[${requestId}] ⚠️ Failed to initialize slide generation tool:`, error?.message);
+            console.warn(`[${requestId}] Slide generation tool error details:`, {
+                message: error?.message,
+                code: error?.code,
+                stack: error?.stack?.substring(0, 200)
+            });
+            // Continue - the tool might already exist or we can proceed without it
+        }
+        
+        try {
+            console.log(`[${requestId}] Initializing puppeteer tool...`);
+            await initializePuppeteerTool();
+            console.log(`[${requestId}] ✅ Puppeteer tool initialized`);
+        } catch (error: any) {
+            console.warn(`[${requestId}] ⚠️ Failed to initialize puppeteer tool:`, error?.message);
+            console.warn(`[${requestId}] Puppeteer tool error details:`, {
+                message: error?.message,
+                code: error?.code
+            });
+            // Continue - puppeteer is optional
+        }
         
         // --- REMOVED SLIDE GENERATION LOGIC ---
         // The old logic was too simple and has been removed.
@@ -445,40 +543,203 @@ export async function POST(req: NextRequest) {
         let toolkits = ['GOOGLESUPER', 'COMPOSIO_SEARCH'];
         
 
-        // Get both toolkit tools and custom tools
-        const google_super_toolkit = await composio.tools.get(String(userId), {
-            toolkits: ['GOOGLESUPER'],
-            limit: 10
-        });
-        const google_sheet_tools = await composio.tools.get(String(userId), {
-            toolkits: ['GOOGLESHEETS'],
-        });
-        const google_docs_tools = await composio.tools.get(String(userId), {
-            toolkits: ['GOOGLEDOCS'],
-            limit: 10
-        });
-        const get_google_docs_tools = await composio.tools.get(String(userId), {
-            tools: ['GOOGLEDOCS_GET_DOCUMENT_BY_ID','GOOGLEDOCS_UPDATE_DOCUMENT_MARKDOWN', 'GOOGLEDOCS_DELETE_CONTENT_RANGE']
-        });
-        const get_google_sheets_tools = await composio.tools.get(String(userId), {
-            tools: ['GOOGLESHEETS_GET_SHEET_BY_ID']
-        });
-        const composio_search_toolkit = await composio.tools.get(String(userId), {
-            toolkits: ['COMPOSIO_SEARCH']
-        });
+        // Get both toolkit tools and custom tools with error handling
+        // Wrap all Composio calls in try-catch to prevent 401 errors from propagating
+        console.log(`[${requestId}] Fetching Composio toolkits for userId: ${userId}...`);
+        
+        let google_super_toolkit = {};
+        let google_sheet_tools = {};
+        let google_docs_tools = {};
+        let google_drive_tools = {};
+        let google_slides_tools = {};
+        let get_google_docs_tools = {};
+        let get_google_sheets_tools = {};
+        let composio_search_toolkit = {};
+        let composio_toolkit = {};
 
-        const composio_toolkit = await composio.tools.get(String(userId), {
-            toolkits: ['COMPOSIO']
-        });
+        try {
+            console.log(`[${requestId}] Fetching GOOGLESUPER toolkit...`);
+            google_super_toolkit = await composio.tools.get(String(userId), {
+                toolkits: ['GOOGLESUPER'],
+                limit: 10
+            });
+            console.log(`[${requestId}] ✅ GOOGLESUPER toolkit:`, Object.keys(google_super_toolkit).length, 'tools');
+        } catch (error: any) {
+            console.warn(`[${requestId}] ⚠️ Failed to get GOOGLESUPER tools:`, error?.message);
+            console.warn(`[${requestId}] GOOGLESUPER error details:`, {
+                status: error?.status,
+                code: error?.code,
+                message: error?.message
+            });
+        }
+
+        try {
+            console.log(`[${requestId}] Fetching GOOGLESHEETS toolkit...`);
+            google_sheet_tools = await composio.tools.get(String(userId), {
+                toolkits: ['GOOGLESHEETS'],
+            });
+            console.log(`[${requestId}] ✅ GOOGLESHEETS toolkit:`, Object.keys(google_sheet_tools).length, 'tools');
+        } catch (error: any) {
+            console.warn(`[${requestId}] ⚠️ Failed to get GOOGLESHEETS tools:`, error?.message);
+            console.warn(`[${requestId}] GOOGLESHEETS error details:`, {
+                status: error?.status,
+                code: error?.code,
+                message: error?.message
+            });
+        }
+
+        try {
+            console.log(`[${requestId}] Fetching GOOGLEDOCS toolkit...`);
+            google_docs_tools = await composio.tools.get(String(userId), {
+                toolkits: ['GOOGLEDOCS'],
+                limit: 10
+            });
+            console.log(`[${requestId}] ✅ GOOGLEDOCS toolkit:`, Object.keys(google_docs_tools).length, 'tools');
+        } catch (error: any) {
+            console.warn(`[${requestId}] ⚠️ Failed to get GOOGLEDOCS tools:`, error?.message);
+            console.warn(`[${requestId}] GOOGLEDOCS error details:`, {
+                status: error?.status,
+                code: error?.code,
+                message: error?.message
+            });
+        }
+
+        // Add Google Drive and Google Slides toolkits
+        try {
+            console.log(`[${requestId}] Fetching GOOGLEDRIVE toolkit...`);
+            google_drive_tools = await composio.tools.get(String(userId), {
+                toolkits: ['GOOGLEDRIVE'],
+                limit: 10
+            });
+            console.log(`[${requestId}] ✅ GOOGLEDRIVE toolkit:`, Object.keys(google_drive_tools).length, 'tools');
+        } catch (error: any) {
+            console.warn(`[${requestId}] ⚠️ Failed to get GOOGLEDRIVE tools:`, error?.message);
+            console.warn(`[${requestId}] GOOGLEDRIVE error details:`, {
+                status: error?.status,
+                code: error?.code,
+                message: error?.message
+            });
+        }
+
+        try {
+            console.log(`[${requestId}] Fetching GOOGLESLIDES toolkit...`);
+            google_slides_tools = await composio.tools.get(String(userId), {
+                toolkits: ['GOOGLESLIDES'],
+                limit: 10
+            });
+            console.log(`[${requestId}] ✅ GOOGLESLIDES toolkit:`, Object.keys(google_slides_tools).length, 'tools');
+        } catch (error: any) {
+            console.warn(`[${requestId}] ⚠️ Failed to get GOOGLESLIDES tools:`, error?.message);
+            console.warn(`[${requestId}] GOOGLESLIDES error details:`, {
+                status: error?.status,
+                code: error?.code,
+                message: error?.message
+            });
+        }
+        
+        try {
+            console.log(`[${requestId}] Fetching Google Docs specific tools...`);
+            get_google_docs_tools = await composio.tools.get(String(userId), {
+                tools: ['GOOGLEDOCS_GET_DOCUMENT_BY_ID','GOOGLEDOCS_UPDATE_DOCUMENT_MARKDOWN', 'GOOGLEDOCS_DELETE_CONTENT_RANGE']
+            });
+            console.log(`[${requestId}] ✅ Google Docs specific tools:`, Object.keys(get_google_docs_tools).length, 'tools');
+        } catch (error: any) {
+            console.warn(`[${requestId}] ⚠️ Failed to get Google Docs specific tools:`, error?.message);
+            console.warn(`[${requestId}] Google Docs tools error details:`, {
+                status: error?.status,
+                code: error?.code,
+                message: error?.message
+            });
+        }
+
+        try {
+            console.log(`[${requestId}] Fetching Google Sheets specific tools...`);
+            get_google_sheets_tools = await composio.tools.get(String(userId), {
+                tools: ['GOOGLESHEETS_GET_SHEET_BY_ID']
+            });
+            console.log(`[${requestId}] ✅ Google Sheets specific tools:`, Object.keys(get_google_sheets_tools).length, 'tools');
+        } catch (error: any) {
+            console.warn(`[${requestId}] ⚠️ Failed to get Google Sheets specific tools:`, error?.message);
+            console.warn(`[${requestId}] Google Sheets tools error details:`, {
+                status: error?.status,
+                code: error?.code,
+                message: error?.message
+            });
+        }
+
+        try {
+            console.log(`[${requestId}] Fetching COMPOSIO_SEARCH toolkit...`);
+            composio_search_toolkit = await composio.tools.get(String(userId), {
+                toolkits: ['COMPOSIO_SEARCH']
+            });
+            console.log(`[${requestId}] ✅ COMPOSIO_SEARCH toolkit:`, Object.keys(composio_search_toolkit).length, 'tools');
+        } catch (error: any) {
+            console.warn(`[${requestId}] ⚠️ Failed to get COMPOSIO_SEARCH tools:`, error?.message);
+            console.warn(`[${requestId}] COMPOSIO_SEARCH error details:`, {
+                status: error?.status,
+                code: error?.code,
+                message: error?.message
+            });
+        }
+
+        try {
+            console.log(`[${requestId}] Fetching COMPOSIO toolkit...`);
+            composio_toolkit = await composio.tools.get(String(userId), {
+                toolkits: ['COMPOSIO']
+            });
+            console.log(`[${requestId}] ✅ COMPOSIO toolkit:`, Object.keys(composio_toolkit).length, 'tools');
+        } catch (error: any) {
+            console.warn(`[${requestId}] ⚠️ Failed to get COMPOSIO tools:`, error?.message);
+            console.warn(`[${requestId}] COMPOSIO error details:`, {
+                status: error?.status,
+                code: error?.code,
+                message: error?.message
+            });
+        }
 
 
         // Always include slide generation tool - available for all requests
-        let allTools = Object.assign({},google_sheet_tools, google_docs_tools, get_google_docs_tools, composio_search_toolkit, composio_toolkit);
-        console.log(allTools);
-        // Always add the slide generation tool
-        const customTools = await composio.tools.get(String(userId), {toolkits: [SLIDE_GENERATOR_TOOL]});
-        allTools = Object.assign({}, allTools, customTools);
-        //console.log(allTools);
+        // Merge all tools including Drive and Slides
+        console.log(`[${requestId}] Merging all tools...`);
+        let allTools = Object.assign(
+            {},
+            google_sheet_tools, 
+            google_docs_tools, 
+            google_drive_tools,
+            google_slides_tools,
+            get_google_docs_tools, 
+            get_google_sheets_tools,
+            composio_search_toolkit, 
+            composio_toolkit
+        );
+        const toolCountBeforeCustom = Object.keys(allTools).length;
+        console.log(`[${requestId}] ✅ Merged tools count:`, toolCountBeforeCustom);
+        console.log(`[${requestId}] Tool breakdown:`, {
+            GOOGLESHEETS: Object.keys(google_sheet_tools).length,
+            GOOGLEDOCS: Object.keys(google_docs_tools).length,
+            GOOGLEDRIVE: Object.keys(google_drive_tools).length,
+            GOOGLESLIDES: Object.keys(google_slides_tools).length,
+            COMPOSIO_SEARCH: Object.keys(composio_search_toolkit).length,
+            COMPOSIO: Object.keys(composio_toolkit).length
+        });
+        
+        // Always add the slide generation tool (if available)
+        try {
+            console.log(`[${requestId}] Fetching slide generation custom tool...`);
+            const customTools = await composio.tools.get(String(userId), {toolkits: [SLIDE_GENERATOR_TOOL]});
+            allTools = Object.assign({}, allTools, customTools);
+            console.log(`[${requestId}] ✅ Slide generation tool added. Total tools:`, Object.keys(allTools).length);
+        } catch (error: any) {
+            console.warn(`[${requestId}] ⚠️ Failed to get slide generation tool:`, error?.message);
+            console.warn(`[${requestId}] Slide generation tool error details:`, {
+                status: error?.status,
+                code: error?.code,
+                message: error?.message
+            });
+            // Continue without the custom tool - slide generation will use the built-in tool
+        }
+        
+        console.log(`[${requestId}] Final tool count:`, Object.keys(allTools).length);
         
         let systemPrompt = `You are Super Agent, a helpful and efficient AI assistant powered by Composio. Your main goal is to assist users by using a suite of powerful tools to accomplish tasks.
 
@@ -524,18 +785,62 @@ Updating google docs means updating the markdown of the document/ deleting all c
             content: prompt
         });
 
-        const { text, toolCalls, toolResults } = await generateText({
-            model: google('gemini-2.5-pro'),
-            system: systemPrompt,
-            messages,
-            tools: allTools,
-            maxSteps: 50,
-        });
+        // Generate response with error handling
+        console.log(`[${requestId}] Preparing to generate AI response...`);
+        console.log(`[${requestId}] Message count:`, messages.length);
+        console.log(`[${requestId}] System prompt length:`, systemPrompt.length);
+        console.log(`[${requestId}] Available tools:`, Object.keys(allTools).length);
+        
+        let text: string;
+        let toolCalls: any[] = [];
+        let toolResults: any[] = [];
+        
+        try {
+            console.log(`[${requestId}] Calling generateText with Gemini 2.5 Pro...`);
+            const startTime = Date.now();
+            const result = await generateText({
+                model: google('gemini-2.5-pro'),
+                system: systemPrompt,
+                messages,
+                tools: allTools,
+                maxSteps: 50,
+            });
+            const duration = Date.now() - startTime;
+            text = result.text;
+            toolCalls = result.toolCalls || [];
+            toolResults = result.toolResults || [];
+            console.log(`[${requestId}] ✅ AI response generated in ${duration}ms`);
+            console.log(`[${requestId}] Response length:`, text?.length);
+            console.log(`[${requestId}] Tool calls:`, toolCalls.length);
+            console.log(`[${requestId}] Tool results:`, toolResults.length);
+        } catch (error: any) {
+            console.error(`[${requestId}] ❌ Error generating text:`, error);
+            console.error(`[${requestId}] GenerateText error details:`, {
+                message: error?.message,
+                status: error?.status,
+                code: error?.code,
+                stack: error?.stack?.substring(0, 500)
+            });
+            // If it's an authentication error from Composio, provide helpful message
+            if (error?.message?.includes('401') || error?.status === 401) {
+                console.error(`[${requestId}] Authentication error detected, returning 401 response`);
+                return createResponse({
+                    response: 'Authentication error: Please ensure your Composio API key is valid and your accounts are properly connected. Visit /signin to connect your Google accounts.',
+                    hasSlides: false,
+                }, userId, newCookie);
+            }
+            // For other errors, return generic error message
+            throw error; // Re-throw to be caught by outer try-catch
+        }
 
+        console.log(`[${requestId}] Checking for slide generation in tool results...`);
         const slideExecution = toolResults.find((result: any) => result.toolName === SLIDE_GENERATOR_TOOL);
 
         if (slideExecution) {
+            console.log(`[${requestId}] ✅ Slide generation detected!`);
             const slideData = slideExecution.result.data.slides;
+            console.log(`[${requestId}] Slide count:`, slideData?.length);
+            console.log(`[${requestId}] ========== Request Completed Successfully (with slides) ==========`);
             return createResponse({
                 response: text,
                 slides: slideData,
@@ -543,16 +848,55 @@ Updating google docs means updating the markdown of the document/ deleting all c
             }, userId, newCookie);
         }
 
-
+        console.log(`[${requestId}] No slides generated, returning text response`);
+        console.log(`[${requestId}] ========== Request Completed Successfully ==========`);
         return createResponse({
             response: text,
             hasSlides: false,
         }, userId, newCookie);
 
-    } catch (error) {
-        console.error('Connection error:', error);
+    } catch (error: any) {
+        console.error(`[${requestId}] ❌❌❌ SuperAgent Error ❌❌❌`);
+        console.error(`[${requestId}] Error type:`, error?.constructor?.name);
+        console.error(`[${requestId}] Error message:`, error?.message);
+        console.error(`[${requestId}] Error status:`, error?.status);
+        console.error(`[${requestId}] Error code:`, error?.code);
+        console.error(`[${requestId}] Error response:`, error?.response);
+        console.error(`[${requestId}] Full error object:`, JSON.stringify(error, Object.getOwnPropertyNames(error)).substring(0, 1000));
+        console.error(`[${requestId}] Stack trace:`, error?.stack);
+        console.error(`[${requestId}] ========== Request Failed ==========`);
+        
+        // Check if it's an authentication error
+        if (error?.status === 401 || error?.response?.status === 401 || error?.message?.includes('401')) {
+            console.error(`[${requestId}] Returning 401 authentication error response`);
+            return NextResponse.json(
+                { 
+                    error: 'Authentication failed. Please check your Composio API key and ensure your accounts are properly connected.',
+                    details: 'Visit /signin to connect your Google accounts, or check your environment variables.'
+                },
+                { status: 401 }
+            );
+        }
+        
+        // Check if it's a Composio API key error
+        if (error?.message?.includes('API key') || error?.message?.includes('authentication')) {
+            console.error(`[${requestId}] Returning API key error response`);
+            return NextResponse.json(
+                { 
+                    error: 'Composio API key error. Please verify your COMPOSIO_API_KEY environment variable is set correctly.',
+                    details: error.message
+                },
+                { status: 500 }
+            );
+        }
+        
+        // Generic error
+        console.error(`[${requestId}] Returning generic 500 error response`);
         return NextResponse.json(
-            { error: 'Failed to process your request. Please try again.' },
+            { 
+                error: 'Failed to process your request. Please try again.',
+                details: process.env.NODE_ENV === 'development' ? error?.message : undefined
+            },
             { status: 500 }
         );
     }
