@@ -833,10 +833,17 @@ Updating google docs means updating the markdown of the document/ deleting all c
             console.log(`[${requestId}] No conversation history provided`);
         }
 
-        // Add current user message
+        // Add current user message with Google Slides context if present
+        let userMessage = prompt;
+        if (slidesUrl && slidesId) {
+            userMessage = `${prompt}\n\n[Google Slides URL: ${slidesUrl} | Presentation ID: ${slidesId}]`;
+            console.log(`[${requestId}] Added Google Slides context to user message`);
+            console.log(`[${requestId}] Presentation ID:`, slidesId);
+        }
+        
         messages.push({
             role: 'user',
-            content: prompt
+            content: userMessage
         });
         
         console.log(`[${requestId}] Total messages:`, messages.length);
