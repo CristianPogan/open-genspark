@@ -784,6 +784,11 @@ This is a critical part of your function. Follow these rules precisely.
     - **Step 2: Outline the Slides.** In your response, provide a clear, slide-by-slide outline of the presentation. Detail the title and key points for each slide based on your analysis.
     - **Step 3: Use the Magic Word.** After creating the slide outline, you **MUST** end your *entire* message with the special command: **[SLIDES]**
 
+3.  **Creating Google Slides Presentations:**
+    - When users ask to create Google Slides or save presentations to Google Drive, use the GOOGLESLIDES toolkit tools.
+    - Available tools include: GOOGLESLIDES_CREATE_PRESENTATION, GOOGLESLIDES_INSERT_SLIDE, GOOGLESLIDES_INSERT_TEXT
+    - After creating slides, provide the Google Slides URL so users can access and edit the presentation.
+
 ---
 
 Updating google docs means updating the markdown of the document/ deleting all content and adding new content.

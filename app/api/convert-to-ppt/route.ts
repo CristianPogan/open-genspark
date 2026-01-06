@@ -5,13 +5,16 @@ export async function POST(req: NextRequest) {
   try {
     const { slides, title, userId, style = 'professional' } = await req.json();
     
-    // Validate userId is provided
-    if (!userId) {
+    // Validate slides are provided
+    if (!slides || !Array.isArray(slides) || slides.length === 0) {
       return NextResponse.json(
-        { error: 'Authentication required. Please sign in.' },
-        { status: 401 }
+        { error: 'Slides are required to generate PowerPoint presentation.' },
+        { status: 400 }
       );
     }
+    
+    // userId is optional - PPT generation doesn't require authentication
+    console.log('Converting slides to PPT:', { slideCount: slides.length, title, style, hasUserId: !!userId });
     
     // Color schemes matching the HTML slides
     const colorSchemes = {

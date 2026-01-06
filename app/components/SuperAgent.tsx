@@ -85,11 +85,12 @@ const WelcomeScreen = ({ onPromptSelect }: { onPromptSelect: (prompt: string) =>
   );
 };
 
-const MessageBubble = ({ message, activeSlide, setActiveSlide, downloadAsPPT }: {
+const MessageBubble = ({ message, activeSlide, setActiveSlide, downloadAsPPT, saveToGoogleDrive }: {
   message: Message;
   activeSlide: number;
   setActiveSlide: (slide: number) => void;
   downloadAsPPT: () => void;
+  saveToGoogleDrive: () => void;
 }) => {
   return (
     <motion.div
@@ -222,6 +223,13 @@ const MessageBubble = ({ message, activeSlide, setActiveSlide, downloadAsPPT }: 
                 >
                   <FiDownload className="w-4 h-4" />
                   Download PPT
+                </button>
+                <button
+                  onClick={saveToGoogleDrive}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-green-500 to-green-600 rounded-lg hover:from-green-600 hover:to-green-700 transition-all duration-200 shadow-sm hover:shadow-md"
+                >
+                  <FiLink className="w-4 h-4" />
+                  Save to Google Drive
                 </button>
               </div>
             </div>
@@ -445,12 +453,15 @@ export default function SuperAgent({ className, userId }: SuperAgentProps) {
         body: JSON.stringify({
           slides: currentSlides,
           title: 'AI Generated Presentation',
-          userId: userId,
+          userId: userId, // Optional - will work without it now
           style: 'professional', // Default to professional style
         }),
       });
 
-      if (!response.ok) throw new Error('Failed to convert to PowerPoint');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to convert to PowerPoint');
+      }
 
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
@@ -461,8 +472,48 @@ export default function SuperAgent({ className, userId }: SuperAgentProps) {
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error downloading presentation:', error);
+      alert(`Failed to download presentation: ${error?.message || 'Unknown error'}`);
+    }
+  };
+
+  const saveToGoogleDrive = async () => {
+    if (currentSlides.length === 0) return;
+
+    if (!userId) {
+      alert('Please sign in to save presentations to Google Drive. Visit /signin to connect your Google account.');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/create-google-slides', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slides: currentSlides,
+          title: 'AI Generated Presentation',
+          userId: userId,
+          style: 'professional',
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create Google Slides');
+      }
+
+      if (data.success && data.slidesUrl) {
+        // Open the Google Slides in a new tab
+        window.open(data.slidesUrl, '_blank');
+        alert(`✅ Presentation created successfully! Opening Google Slides...`);
+      } else {
+        throw new Error(data.error || 'Failed to create Google Slides');
+      }
+    } catch (error: any) {
+      console.error('Error creating Google Slides:', error);
+      alert(`Failed to create Google Slides: ${error?.message || 'Unknown error'}`);
     }
   };
 
@@ -551,6 +602,7 @@ export default function SuperAgent({ className, userId }: SuperAgentProps) {
                   activeSlide={activeSlide}
                   setActiveSlide={setActiveSlide}
                   downloadAsPPT={downloadAsPPT}
+                  saveToGoogleDrive={saveToGoogleDrive}
                 />
               ))}
               
