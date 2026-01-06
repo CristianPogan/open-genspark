@@ -876,34 +876,99 @@ Updating google docs means updating the markdown of the document/ deleting all c
         
         try {
             console.log(`[${requestId}] Calling generateText with Gemini 2.5 Pro...`);
-            const startTime = Date.now();
+            const aiStartTime = Date.now();
             
             // Ensure tools is properly formatted - if empty, pass undefined instead of empty object
             const toolsToUse = Object.keys(allTools).length > 0 ? allTools : undefined;
             
-            const result = await generateText({
+            // Set timeout to prevent H12 errors (Heroku has 30s timeout, we'll use 25s as safety margin)
+            const TIMEOUT_MS = 25000; // 25 seconds
+            
+            const generateTextPromise = generateText({
                 model: google('gemini-2.5-pro'),
                 system: systemPrompt,
                 messages,
                 tools: toolsToUse,
                 maxSteps: 50,
             });
-            const duration = Date.now() - startTime;
+            
+            // Race between the actual request and a timeout
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => {
+                    reject(new Error('Request timeout: AI generation took longer than 25 seconds. Please try again with a simpler request.'));
+                }, TIMEOUT_MS);
+            });
+            
+            const result = await Promise.race([generateTextPromise, timeoutPromise]) as any;
+            const aiDuration = Date.now() - aiStartTime;
             text = result.text;
             toolCalls = result.toolCalls || [];
             toolResults = result.toolResults || [];
-            console.log(`[${requestId}] ✅ AI response generated in ${duration}ms`);
+            console.log(`[${requestId}] ✅ AI response generated in ${aiDuration}ms`);
+            
+            // Warn if approaching timeout
+            if (aiDuration > 20000) {
+                console.warn(`[${requestId}] ⚠️ AI generation took ${aiDuration}ms - approaching timeout limit`);
+            }
             console.log(`[${requestId}] Response length:`, text?.length);
             console.log(`[${requestId}] Tool calls:`, toolCalls.length);
             console.log(`[${requestId}] Tool results:`, toolResults.length);
         } catch (error: any) {
-            console.error(`[${requestId}] ❌ Error generating text:`, error);
+            const errorDuration = Date.now() - aiStartTime;
+            console.error(`[${requestId}] ❌ Error generating text after ${errorDuration}ms:`, error);
+            
+            // Handle timeout errors specifically
+            if (error?.message?.includes('timeout') || error?.message?.includes('Request timeout')) {
+                console.error(`[${requestId}] Request timeout detected after ${errorDuration}ms`);
+                return createResponse({
+                    response: `The request took too long to process (${Math.round(errorDuration/1000)}s). This can happen with complex requests. Please try:\n\n1. Breaking your request into smaller parts\n2. Using simpler, more direct questions\n3. Trying again - sometimes the AI needs a moment\n\nIf this persists, the request may be too complex for the current setup.`,
+                    hasSlides: false,
+                }, userId, newCookie);
+            }
             console.error(`[${requestId}] GenerateText error details:`, {
                 message: error?.message,
                 status: error?.status,
                 code: error?.code,
+                name: error?.name,
+                toolName: error?.toolName,
+                toolCallId: error?.toolCallId,
+                cause: error?.cause,
                 stack: error?.stack?.substring(0, 500)
             });
+            
+            // Handle AI Tool Execution Errors (e.g., "No connected accounts found")
+            if (error?.name === 'AI_ToolExecutionError' || error?.message?.includes('ToolExecutionError')) {
+                const toolName = error?.toolName || 'unknown tool';
+                const isNoAccountError = error?.message?.includes('No connected accounts') || 
+                                        error?.cause?.message?.includes('No connected accounts');
+                
+                console.error(`[${requestId}] Tool execution error detected:`, {
+                    toolName,
+                    isNoAccountError,
+                    errorMessage: error?.message
+                });
+                
+                if (isNoAccountError) {
+                    // Check which toolkit requires connection
+                    let toolkitName = 'Google account';
+                    if (toolName.includes('GOOGLESLIDES')) toolkitName = 'Google Slides';
+                    else if (toolName.includes('GOOGLEDRIVE')) toolkitName = 'Google Drive';
+                    else if (toolName.includes('GOOGLESHEETS')) toolkitName = 'Google Sheets';
+                    else if (toolName.includes('GOOGLEDOCS')) toolkitName = 'Google Docs';
+                    
+                    return createResponse({
+                        response: `I tried to use ${toolkitName}, but your account isn't connected. Please visit /signin to connect your ${toolkitName} account, then try again.`,
+                        hasSlides: false,
+                    }, userId, newCookie);
+                }
+                
+                // Other tool execution errors
+                return createResponse({
+                    response: `I encountered an error while trying to use ${toolName}. Please try again or visit /signin to ensure your accounts are properly connected.`,
+                    hasSlides: false,
+                }, userId, newCookie);
+            }
+            
             // If it's an authentication error from Composio, provide helpful message
             if (error?.message?.includes('401') || error?.status === 401) {
                 console.error(`[${requestId}] Authentication error detected, returning 401 response`);
