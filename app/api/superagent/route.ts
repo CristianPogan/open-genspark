@@ -549,6 +549,22 @@ export async function POST(req: NextRequest) {
             // The AI will use GOOGLESLIDES tools to update it
         }
         
+        // Check for connected accounts before including tools that require them
+        let hasConnectedGoogleAccount = false;
+        try {
+            const connectedAccounts = await composio.connectedAccounts.list({
+                userIds: [String(userId)],
+            });
+            hasConnectedGoogleAccount = connectedAccounts?.items && connectedAccounts.items.length > 0;
+            console.log(`[${requestId}] Connected accounts check:`, {
+                hasConnected: hasConnectedGoogleAccount,
+                accountCount: hasConnectedGoogleAccount ? connectedAccounts.items.length : 0
+            });
+        } catch (accountCheckError: any) {
+            console.warn(`[${requestId}] ⚠️ Could not check connected accounts:`, accountCheckError?.message);
+            // Continue anyway - will fail gracefully if tools are used without connection
+        }
+        
         // Initialize the custom slide generation tool (with error handling)
         console.log(`[${requestId}] Initializing custom tools...`);
         try {
