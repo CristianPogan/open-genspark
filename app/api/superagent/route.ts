@@ -1074,6 +1074,24 @@ Updating google docs means updating the markdown of the document/ deleting all c
             );
         }
         
+        // Handle "No connected accounts" errors at top level (fallback)
+        if (error?.message?.includes('No connected accounts') || 
+            error?.cause?.message?.includes('No connected accounts') ||
+            (error?.name === 'AI_ToolExecutionError' && error?.message?.includes('No connected accounts'))) {
+            console.error(`[${requestId}] No connected accounts error detected at top level`);
+            const toolName = error?.toolName || 'Google service';
+            let toolkitName = 'Google account';
+            if (toolName.includes('GOOGLESLIDES')) toolkitName = 'Google Slides';
+            else if (toolName.includes('GOOGLEDRIVE')) toolkitName = 'Google Drive';
+            else if (toolName.includes('GOOGLESHEETS')) toolkitName = 'Google Sheets';
+            else if (toolName.includes('GOOGLEDOCS')) toolkitName = 'Google Docs';
+            
+            return createResponse({
+                response: `I tried to use ${toolkitName}, but your account isn't connected. Please visit /signin to connect your ${toolkitName} account, then try again.`,
+                hasSlides: false,
+            }, userId, newCookie);
+        }
+        
         // Check for missing environment variables
         if (error?.message?.includes('GOOGLE') || error?.message?.includes('API_KEY')) {
             console.error(`[${requestId}] Returning environment variable error response`);
