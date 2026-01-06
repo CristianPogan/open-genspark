@@ -251,6 +251,7 @@ const SLIDE_GENERATOR_TOOL = 'GENERATE_PRESENTATION_SLIDES';
 // Initialize custom slide generation tool
 async function initializeSlideGenerationTool() {
     try {
+        console.log('🔧 Initializing slide generation tool...');
         const tool = await composio.tools.createCustomTool({
             slug: SLIDE_GENERATOR_TOOL,
             name: 'Generate Presentation Slides',
@@ -309,7 +310,8 @@ Generate substantial, professional content that accurately reflects the provided
                         error: null,
                         successful: true
                     };
-                } catch (error) {
+                } catch (error: any) {
+                    console.error('Error in slide generation execute function:', error);
                     return {
                         data: {
                             error: `Failed to generate slides: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -323,8 +325,13 @@ Generate substantial, professional content that accurately reflects the provided
         
         console.log('🚀 Slide generation tool created:', tool);
         return tool;
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error creating slide generation tool:', error);
+        console.error('Slide generation tool creation error details:', {
+            message: error?.message,
+            code: error?.code,
+            stack: error?.stack?.substring(0, 500)
+        });
         return null;
     }
 }
