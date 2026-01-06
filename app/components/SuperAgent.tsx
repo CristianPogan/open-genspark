@@ -319,6 +319,23 @@ export default function SuperAgent({ className, userId }: SuperAgentProps) {
     return match ? match[0] : null;
   };
 
+  // Google Slides helper functions
+  const validateSlidesUrl = (url: string): boolean => {
+    const googleSlidesRegex = /^https:\/\/docs\.google\.com\/presentation\/d\/[a-zA-Z0-9-_]+/;
+    return googleSlidesRegex.test(url);
+  };
+
+  const extractSlidesId = (url: string): string => {
+    const match = url.match(/\/presentation\/d\/([a-zA-Z0-9-_]+)/);
+    return match ? match[1] : '';
+  };
+
+  const detectSlidesUrl = (text: string): string | null => {
+    const googleSlidesRegex = /https:\/\/docs\.google\.com\/presentation\/d\/[a-zA-Z0-9-_]+[^\s]*/g;
+    const match = text.match(googleSlidesRegex);
+    return match ? match[0] : null;
+  };
+
   const handleExamplePrompt = (p: string) => {
     setPrompt(p);
     inputRef.current?.focus();
@@ -361,6 +378,10 @@ export default function SuperAgent({ className, userId }: SuperAgentProps) {
     setIsLoading(true);
 
     try {
+      // Detect Google Slides URL if present
+      const detectedSlidesUrl = detectSlidesUrl(msg);
+      const slidesId = detectedSlidesUrl ? extractSlidesId(detectedSlidesUrl) : undefined;
+
       // Send to SuperAgent route
       const response = await fetch('/api/superagent', {
         method: 'POST',
@@ -372,6 +393,8 @@ export default function SuperAgent({ className, userId }: SuperAgentProps) {
           userId: userId,
           sheetUrl: detectedSheetUrl || (isSheetConnected ? sheetUrl : undefined),
           docUrl: detectedDocUrl || (isDocConnected ? docUrl : undefined),
+          slidesUrl: detectedSlidesUrl,
+          slidesId: slidesId,
         }),
       });
 

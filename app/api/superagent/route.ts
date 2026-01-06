@@ -436,7 +436,7 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const { prompt, selectedTool, conversationHistory, userId: bodyUserId, sheetUrl, docUrl } = requestBody || {};
+        const { prompt, selectedTool, conversationHistory, userId: bodyUserId, sheetUrl, docUrl, slidesUrl, slidesId } = requestBody || {};
         
         console.log(`[${requestId}] Request parameters:`, {
             hasPrompt: !!prompt,
@@ -445,7 +445,9 @@ export async function POST(req: NextRequest) {
             conversationHistoryLength: conversationHistory?.length,
             bodyUserId,
             sheetUrl: !!sheetUrl,
-            docUrl: !!docUrl
+            docUrl: !!docUrl,
+            slidesUrl: !!slidesUrl,
+            slidesId: slidesId
         });
         
         // Validate required fields
@@ -527,6 +529,14 @@ export async function POST(req: NextRequest) {
 - "Check for grammatical errors"`,
                 hasSlides: false,
             }, userId, newCookie);
+        }
+
+        // If a Google Slides URL is detected, inform the AI about it
+        if (slidesUrl && slidesId) {
+            console.log(`[${requestId}] Google Slides URL detected:`, slidesUrl);
+            console.log(`[${requestId}] Presentation ID:`, slidesId);
+            // Add context to the prompt about the existing presentation
+            // The AI will use GOOGLESLIDES tools to update it
         }
         
         // Initialize the custom slide generation tool (with error handling)
@@ -784,15 +794,22 @@ This is a critical part of your function. Follow these rules precisely.
     - **Step 2: Outline the Slides.** In your response, provide a clear, slide-by-slide outline of the presentation. Detail the title and key points for each slide based on your analysis.
     - **Step 3: Use the Magic Word.** After creating the slide outline, you **MUST** end your *entire* message with the special command: **[SLIDES]**
 
-3.  **Creating Google Slides Presentations:**
+3.  **Creating and Updating Google Slides Presentations:**
     - When users ask to create Google Slides, save to Google Drive, or create presentations in Google Drive, you MUST use the GOOGLESLIDES toolkit tools.
-    - Available tools include: GOOGLESLIDES_CREATE_PRESENTATION, GOOGLESLIDES_INSERT_SLIDE, GOOGLESLIDES_INSERT_TEXT, and other GOOGLESLIDES tools.
-    - **IMPORTANT:** If a user requests "create a presentation in Google Drive" or "save to Google Drive", you MUST:
+    - Available tools include: GOOGLESLIDES_CREATE_PRESENTATION, GOOGLESLIDES_INSERT_SLIDE, GOOGLESLIDES_INSERT_TEXT, GOOGLESLIDES_GET_PRESENTATION, GOOGLESLIDES_DELETE_SLIDE, GOOGLESLIDES_UPDATE_SLIDE, and other GOOGLESLIDES tools.
+    - **Creating New Presentations:** If a user requests "create a presentation in Google Drive" or "save to Google Drive", you MUST:
       1. Use GOOGLESLIDES_CREATE_PRESENTATION to create a new presentation
       2. Add slides using GOOGLESLIDES_INSERT_SLIDE for each slide
       3. Add content using GOOGLESLIDES_INSERT_TEXT
       4. Provide the Google Slides URL (format: https://docs.google.com/presentation/d/{PRESENTATION_ID}/edit)
-    - After creating slides, always provide the Google Slides URL so users can access and edit the presentation.
+    - **Updating Existing Presentations:** If a user provides a Google Slides URL or asks to update an existing presentation:
+      1. Extract the presentation ID from the URL (format: /presentation/d/{PRESENTATION_ID}/)
+      2. Use GOOGLESLIDES_GET_PRESENTATION to get the current presentation
+      3. Use GOOGLESLIDES_DELETE_SLIDE to remove old slides if needed
+      4. Use GOOGLESLIDES_INSERT_SLIDE to add new slides
+      5. Use GOOGLESLIDES_INSERT_TEXT or GOOGLESLIDES_UPDATE_SLIDE to update content
+      6. Provide the updated Google Slides URL
+    - After creating or updating slides, always provide the Google Slides URL so users can access and edit the presentation.
 
 ---
 
