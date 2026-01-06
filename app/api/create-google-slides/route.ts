@@ -53,8 +53,9 @@ export async function POST(req: NextRequest) {
                 userIds: [String(finalUserId)],
                 toolkitSlugs: ['GOOGLESLIDES']
             });
-            hasConnectedAccount = connectedAccounts && connectedAccounts.length > 0;
-            console.log(`[${requestId}] Connected Google Slides accounts:`, hasConnectedAccount ? connectedAccounts.length : 0);
+            // connectedAccounts is an object with items array, not an array itself
+            hasConnectedAccount = connectedAccounts?.items && connectedAccounts.items.length > 0;
+            console.log(`[${requestId}] Connected Google Slides accounts:`, hasConnectedAccount ? connectedAccounts.items.length : 0);
         } catch (checkError: any) {
             console.warn(`[${requestId}] ⚠️ Could not check connected accounts:`, checkError?.message);
             // Continue anyway - will fail later if no connection
