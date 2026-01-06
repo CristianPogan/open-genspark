@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
             console.log(`[${requestId}] Checking connected accounts for userId:`, finalUserId);
             const connectedAccounts = await composio.connectedAccounts.list({
                 userIds: [String(finalUserId)],
-                toolkitSlug: 'GOOGLESLIDES'
+                toolkitSlugs: ['GOOGLESLIDES']
             });
             hasConnectedAccount = connectedAccounts && connectedAccounts.length > 0;
             console.log(`[${requestId}] Connected Google Slides accounts:`, hasConnectedAccount ? connectedAccounts.length : 0);
