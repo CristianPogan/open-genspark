@@ -813,11 +813,14 @@ export async function POST(req: NextRequest) {
         // Build system prompt with account connection status
         let systemPrompt = `You are Super Agent, a helpful and efficient AI assistant powered by Composio. Your main goal is to assist users by using a suite of powerful tools to accomplish tasks.`;
         
-        // Add warning about connected accounts if none are found
+        // Add information about connected accounts
         if (!hasConnectedGoogleAccount) {
-            systemPrompt += `\n\n⚠️ CRITICAL: The user has NOT connected their Google account. Before using ANY Google tools (Google Sheets, Docs, Drive, Slides), you MUST inform them they need to visit /signin to connect their Google account first. Do NOT attempt to use Google tools without a connected account - this will cause errors and fail.`;
+            systemPrompt += `\n\n⚠️ NOTE: The user has NOT connected their Google account. 
+            - For creating presentations: ALWAYS use GENERATE_PRESENTATION_SLIDES tool - this works without Google connection.
+            - For Google Sheets/Docs operations: Inform them they need to visit /signin to connect their Google account.
+            - Do NOT require Google connection for presentation creation - create presentations locally first.`;
         } else {
-            systemPrompt += `\n\n✅ The user has connected their Google account, so you can use Google tools (Sheets, Docs, Drive, Slides) when appropriate.`;
+            systemPrompt += `\n\n✅ The user has connected their Google account, so you can use Google tools (Sheets, Docs, Drive, Slides) when appropriate. For presentations, still create them locally first using GENERATE_PRESENTATION_SLIDES, then optionally save to Google Drive if requested.`;
         }
         
         systemPrompt += `\n\n**Core Principles:**
@@ -840,22 +843,24 @@ This is a critical part of your function. Follow these rules precisely.
     - **Step 2: Outline the Slides.** In your response, provide a clear, slide-by-slide outline of the presentation. Detail the title and key points for each slide based on your analysis.
     - **Step 3: Use the Magic Word.** After creating the slide outline, you **MUST** end your *entire* message with the special command: **[SLIDES]**
 
-3.  **Creating and Updating Google Slides Presentations:**
-    - When users ask to create Google Slides, save to Google Drive, or create presentations in Google Drive, you MUST use the GOOGLESLIDES toolkit tools.
-    - Available tools include: GOOGLESLIDES_CREATE_PRESENTATION, GOOGLESLIDES_INSERT_SLIDE, GOOGLESLIDES_INSERT_TEXT, GOOGLESLIDES_GET_PRESENTATION, GOOGLESLIDES_DELETE_SLIDE, GOOGLESLIDES_UPDATE_SLIDE, and other GOOGLESLIDES tools.
-    - **Creating New Presentations:** If a user requests "create a presentation in Google Drive" or "save to Google Drive", you MUST:
-      1. Use GOOGLESLIDES_CREATE_PRESENTATION to create a new presentation
-      2. Add slides using GOOGLESLIDES_INSERT_SLIDE for each slide
-      3. Add content using GOOGLESLIDES_INSERT_TEXT
-      4. Provide the Google Slides URL (format: https://docs.google.com/presentation/d/{PRESENTATION_ID}/edit)
-    - **Updating Existing Presentations:** If a user provides a Google Slides URL or asks to update an existing presentation:
-      1. Extract the presentation ID from the URL (format: /presentation/d/{PRESENTATION_ID}/)
-      2. Use GOOGLESLIDES_GET_PRESENTATION to get the current presentation
-      3. Use GOOGLESLIDES_DELETE_SLIDE to remove old slides if needed
-      4. Use GOOGLESLIDES_INSERT_SLIDE to add new slides
-      5. Use GOOGLESLIDES_INSERT_TEXT or GOOGLESLIDES_UPDATE_SLIDE to update content
-      6. Provide the updated Google Slides URL
-    - After creating or updating slides, always provide the Google Slides URL so users can access and edit the presentation.
+3.  **Creating Presentations:**
+    - When users ask to create a presentation, you MUST use the GENERATE_PRESENTATION_SLIDES tool to create it directly.
+    - **ALWAYS create presentations locally first** - do NOT require Google Slides connection.
+    - **Creating New Presentations:** When a user requests a presentation:
+      1. Use the GENERATE_PRESENTATION_SLIDES tool with the user's content
+      2. The tool will generate professional slides with HTML formatting
+      3. The slides will be displayed in the chat interface
+      4. Users can download the presentation as PowerPoint (.pptx) using the "Download PPT" button
+    - **Optional: Saving to Google Drive:** Only if the user explicitly asks to "save to Google Drive" AND has a connected Google account:
+      - First create the presentation locally using GENERATE_PRESENTATION_SLIDES
+      - Then optionally use GOOGLESLIDES tools to save it to Google Drive
+      - If the user doesn't have a connected Google account, just create the presentation locally - do NOT ask them to connect
+    - **Updating Existing Google Slides Presentations:** Only if a user provides a Google Slides URL:
+      1. Extract the presentation ID from the URL
+      2. Use GOOGLESLIDES_GET_PRESENTATION to read the existing presentation
+      3. Use GOOGLESLIDES tools to update it (only if Google account is connected)
+      4. If no Google account is connected, inform the user they can update it manually or connect their account
+    - **IMPORTANT:** Never require Google Slides connection to create presentations. Always create them locally first using GENERATE_PRESENTATION_SLIDES.
 
 ---
 
@@ -996,6 +1001,14 @@ Updating google docs means updating the markdown of the document/ deleting all c
                     else if (toolName.includes('GOOGLEDRIVE')) toolkitName = 'Google Drive';
                     else if (toolName.includes('GOOGLESHEETS')) toolkitName = 'Google Sheets';
                     else if (toolName.includes('GOOGLEDOCS')) toolkitName = 'Google Docs';
+                    
+                    // For Google Slides, suggest using local presentation creation instead
+                    if (toolName.includes('GOOGLESLIDES')) {
+                        return createResponse({
+                            response: `I can create presentations directly without Google Slides! Let me create a presentation for you right here. What would you like the presentation to be about?`,
+                            hasSlides: false,
+                        }, userId, newCookie);
+                    }
                     
                     return createResponse({
                         response: `I tried to use ${toolkitName}, but your account isn't connected. Please visit /signin to connect your ${toolkitName} account, then try again.`,
