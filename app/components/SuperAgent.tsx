@@ -248,6 +248,40 @@ const MessageBubble = ({ message, activeSlide, setActiveSlide, downloadAsPPT, sa
 };
 
 export default function SuperAgent({ className, userId }: SuperAgentProps) {
+  // Suppress browser extension errors
+  useEffect(() => {
+    const originalError = window.console.error;
+    window.console.error = (...args: any[]) => {
+      // Suppress browser extension errors (content_script.js)
+      const errorString = args.join(' ');
+      if (errorString.includes('content_script.js') || 
+          errorString.includes('Cannot read properties of undefined') ||
+          errorString.includes('reading \'control\'')) {
+        // Silently ignore browser extension errors
+        return;
+      }
+      // Log other errors normally
+      originalError.apply(window.console, args);
+    };
+
+    // Also suppress unhandled promise rejections from extensions
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      const errorString = event.reason?.toString() || '';
+      if (errorString.includes('content_script.js') || 
+          errorString.includes('Cannot read properties of undefined')) {
+        event.preventDefault(); // Suppress the error
+        return;
+      }
+    };
+    
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+
+    return () => {
+      window.console.error = originalError;
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+    };
+  }, []);
+
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -437,7 +471,17 @@ export default function SuperAgent({ className, userId }: SuperAgentProps) {
           errorData = { error: `Server error: ${response.status} ${response.statusText}` };
         }
         
-        throw new Error(errorData?.error || `API response was not ok: ${response.status} ${response.statusText}`);
+        // Create detailed error message
+        const errorMessage = errorData?.error || `API response was not ok: ${response.status} ${response.statusText}`;
+        const errorDetails = errorData?.details || '';
+        const errorSuggestion = errorData?.suggestion || '';
+        
+        // Combine error message with details and suggestion
+        let fullErrorMessage = errorMessage;
+        if (errorDetails) fullErrorMessage += `\n\n${errorDetails}`;
+        if (errorSuggestion) fullErrorMessage += `\n\n${errorSuggestion}`;
+        
+        throw new Error(fullErrorMessage);
       }
       
       console.log('[SuperAgent] ✅ Parsing response JSON...');
@@ -501,12 +545,23 @@ export default function SuperAgent({ className, userId }: SuperAgentProps) {
         }
       }
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error:', error);
+      
+      // Extract error message
+      let errorContent = 'Sorry, I ran into an issue. Please try again.';
+      
+      if (error?.message) {
+        errorContent = error.message;
+      } else if (typeof error === 'string') {
+        errorContent = error;
+      }
+      
+      // Show user-friendly error message
       const errorMessage: Message = {
         id: `error-${Date.now()}`,
         role: 'assistant',
-        content: 'Sorry, I ran into an issue. Please try again.',
+        content: errorContent,
         timestamp: new Date()
       };
       setMessages(prev => [...prev, errorMessage]);

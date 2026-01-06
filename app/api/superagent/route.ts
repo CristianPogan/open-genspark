@@ -1076,16 +1076,37 @@ Updating google docs means updating the markdown of the document/ deleting all c
             );
         }
         
+        // Check if it's a leaked API key error
+        if (error?.message?.toLowerCase().includes('leaked') || 
+            error?.message?.toLowerCase().includes('reported as leaked') ||
+            error?.response?.data?.message?.toLowerCase().includes('leaked')) {
+            console.error(`[${requestId}] Leaked API key detected`);
+            return NextResponse.json(
+                { 
+                    error: 'Your Composio API key has been reported as leaked and is no longer valid.',
+                    details: 'Please generate a new API key from your Composio dashboard and update the COMPOSIO_API_KEY environment variable.',
+                    suggestion: '1. Go to https://app.composio.dev/settings/api-keys\n2. Revoke the old key\n3. Generate a new API key\n4. Update COMPOSIO_API_KEY in your Heroku/Vercel environment variables',
+                    requestId: requestId
+                },
+                { status: 401 }
+            );
+        }
+        
         // Check if it's a Composio API key error
-        if (error?.message?.includes('API key') || error?.message?.includes('authentication') || error?.message?.includes('COMPOSIO')) {
+        if (error?.message?.includes('API key') || 
+            error?.message?.includes('authentication') || 
+            error?.message?.includes('COMPOSIO') ||
+            error?.response?.status === 401 ||
+            error?.response?.status === 403) {
             console.error(`[${requestId}] Returning API key error response`);
             return NextResponse.json(
                 { 
                     error: 'Composio API key error. Please verify your COMPOSIO_API_KEY environment variable is set correctly.',
-                    details: error.message,
+                    details: error?.message || error?.response?.data?.message || 'Unknown API key error',
+                    suggestion: 'Check your Composio API key in Heroku/Vercel environment variables and ensure it is valid.',
                     requestId: requestId
                 },
-                { status: 500 }
+                { status: 401 }
             );
         }
         
