@@ -663,48 +663,8 @@ export async function POST(req: NextRequest) {
             });
         }
 
-        // Add Google Drive and Google Slides toolkits
-        try {
-            console.log(`[${requestId}] Fetching GOOGLEDRIVE toolkit...`);
-            google_drive_tools = await composio.tools.get(String(userId), {
-                toolkits: ['GOOGLEDRIVE'],
-                limit: 10
-            });
-            console.log(`[${requestId}] ✅ GOOGLEDRIVE toolkit:`, Object.keys(google_drive_tools).length, 'tools');
-        } catch (error: any) {
-            console.warn(`[${requestId}] ⚠️ Failed to get GOOGLEDRIVE tools:`, error?.message);
-            console.warn(`[${requestId}] GOOGLEDRIVE error details:`, {
-                status: error?.status,
-                code: error?.code,
-                message: error?.message
-            });
-        }
-
-        try {
-            console.log(`[${requestId}] Fetching GOOGLESLIDES toolkit...`);
-            google_slides_tools = await composio.tools.get(String(userId), {
-                toolkits: ['GOOGLESLIDES'],
-            });
-            console.log(`[${requestId}] ✅ GOOGLESLIDES toolkit:`, Object.keys(google_slides_tools).length, 'tools');
-            console.log(`[${requestId}] GOOGLESLIDES tool names:`, Object.keys(google_slides_tools).slice(0, 5));
-            
-            // Log tool details for debugging
-            Object.entries(google_slides_tools).slice(0, 3).forEach(([key, tool]: [string, any]) => {
-                console.log(`[${requestId}] GOOGLESLIDES tool ${key}:`, {
-                    name: tool?.name,
-                    slug: tool?.slug
-                });
-            });
-        } catch (error: any) {
-            console.warn(`[${requestId}] ⚠️ Failed to get GOOGLESLIDES tools:`, error?.message);
-            console.warn(`[${requestId}] GOOGLESLIDES error details:`, {
-                status: error?.status,
-                code: error?.code,
-                message: error?.message
-            });
-            // Don't fail the request - tools might not be available, but we'll handle errors when tools are used
-            google_slides_tools = {};
-        }
+        // Removed Google Drive and Google Slides toolkits - presentations are created locally in frontend
+        // No need to fetch these tools anymore
         
         try {
             console.log(`[${requestId}] Fetching Google Docs specific tools...`);
@@ -768,14 +728,12 @@ export async function POST(req: NextRequest) {
 
 
         // Always include slide generation tool - available for all requests
-        // Merge all tools including Drive and Slides
+        // Merge all tools (excluding Google Drive/Slides - presentations created locally)
         console.log(`[${requestId}] Merging all tools...`);
         let allTools = Object.assign(
             {},
             google_sheet_tools, 
             google_docs_tools, 
-            google_drive_tools,
-            google_slides_tools,
             get_google_docs_tools, 
             get_google_sheets_tools,
             composio_search_toolkit, 
@@ -786,11 +744,10 @@ export async function POST(req: NextRequest) {
         console.log(`[${requestId}] Tool breakdown:`, {
             GOOGLESHEETS: Object.keys(google_sheet_tools).length,
             GOOGLEDOCS: Object.keys(google_docs_tools).length,
-            GOOGLEDRIVE: Object.keys(google_drive_tools).length,
-            GOOGLESLIDES: Object.keys(google_slides_tools).length,
             COMPOSIO_SEARCH: Object.keys(composio_search_toolkit).length,
             COMPOSIO: Object.keys(composio_toolkit).length
         });
+        console.log(`[${requestId}] Note: Google Drive/Slides tools removed - presentations created locally in frontend`);
         
         // Always add the slide generation tool (if available)
         try {
@@ -817,10 +774,11 @@ export async function POST(req: NextRequest) {
         if (!hasConnectedGoogleAccount) {
             systemPrompt += `\n\n⚠️ NOTE: The user has NOT connected their Google account. 
             - For creating presentations: ALWAYS use GENERATE_PRESENTATION_SLIDES tool - this works without Google connection.
-            - For Google Sheets/Docs operations: Inform them they need to visit /signin to connect their Google account.
-            - Do NOT require Google connection for presentation creation - create presentations locally first.`;
+            - Presentations are created locally in the frontend - no Google account needed.
+            - For Google Sheets/Docs operations: Inform them they need to visit /signin to connect their Google account.`;
         } else {
-            systemPrompt += `\n\n✅ The user has connected their Google account, so you can use Google tools (Sheets, Docs, Drive, Slides) when appropriate. For presentations, still create them locally first using GENERATE_PRESENTATION_SLIDES, then optionally save to Google Drive if requested.`;
+            systemPrompt += `\n\n✅ The user has connected their Google account, so you can use Google tools (Sheets, Docs) when appropriate. 
+            - For presentations: ALWAYS create them locally using GENERATE_PRESENTATION_SLIDES tool - presentations are created in the frontend, no Google Drive needed.`;
         }
         
         systemPrompt += `\n\n**Core Principles:**
@@ -845,22 +803,17 @@ This is a critical part of your function. Follow these rules precisely.
 
 3.  **Creating Presentations:**
     - When users ask to create a presentation, you MUST use the GENERATE_PRESENTATION_SLIDES tool to create it directly.
-    - **ALWAYS create presentations locally first** - do NOT require Google Slides connection.
+    - **ALL presentations are created locally in the frontend** - no Google Drive or Google Slides connection required.
     - **Creating New Presentations:** When a user requests a presentation:
       1. Use the GENERATE_PRESENTATION_SLIDES tool with the user's content
       2. The tool will generate professional slides with HTML formatting
       3. The slides will be displayed in the chat interface
       4. Users can download the presentation as PowerPoint (.pptx) using the "Download PPT" button
-    - **Optional: Saving to Google Drive:** Only if the user explicitly asks to "save to Google Drive" AND has a connected Google account:
-      - First create the presentation locally using GENERATE_PRESENTATION_SLIDES
-      - Then optionally use GOOGLESLIDES tools to save it to Google Drive
-      - If the user doesn't have a connected Google account, just create the presentation locally - do NOT ask them to connect
-    - **Updating Existing Google Slides Presentations:** Only if a user provides a Google Slides URL:
-      1. Extract the presentation ID from the URL
-      2. Use GOOGLESLIDES_GET_PRESENTATION to read the existing presentation
-      3. Use GOOGLESLIDES tools to update it (only if Google account is connected)
-      4. If no Google account is connected, inform the user they can update it manually or connect their account
-    - **IMPORTANT:** Never require Google Slides connection to create presentations. Always create them locally first using GENERATE_PRESENTATION_SLIDES.
+    - **IMPORTANT:** 
+      - Never mention Google Drive or Google Slides when creating presentations
+      - All presentations are created locally and displayed in the browser
+      - Users can download presentations as PowerPoint files
+      - No external services or accounts are required for presentation creation
 
 ---
 
@@ -997,15 +950,14 @@ Updating google docs means updating the markdown of the document/ deleting all c
                 if (isNoAccountError) {
                     // Check which toolkit requires connection
                     let toolkitName = 'Google account';
-                    if (toolName.includes('GOOGLESLIDES')) toolkitName = 'Google Slides';
-                    else if (toolName.includes('GOOGLEDRIVE')) toolkitName = 'Google Drive';
-                    else if (toolName.includes('GOOGLESHEETS')) toolkitName = 'Google Sheets';
+                    if (toolName.includes('GOOGLESHEETS')) toolkitName = 'Google Sheets';
                     else if (toolName.includes('GOOGLEDOCS')) toolkitName = 'Google Docs';
                     
-                    // For Google Slides, suggest using local presentation creation instead
-                    if (toolName.includes('GOOGLESLIDES')) {
+                    // Google Slides/Drive errors should not occur since we removed those tools
+                    // But handle gracefully if they do
+                    if (toolName.includes('GOOGLESLIDES') || toolName.includes('GOOGLEDRIVE')) {
                         return createResponse({
-                            response: `I can create presentations directly without Google Slides! Let me create a presentation for you right here. What would you like the presentation to be about?`,
+                            response: `I can create presentations directly in the browser! Let me create a presentation for you right here. What would you like the presentation to be about?`,
                             hasSlides: false,
                         }, userId, newCookie);
                     }
@@ -1148,10 +1100,24 @@ Updating google docs means updating the markdown of the document/ deleting all c
             console.error(`[${requestId}] No connected accounts error detected at top level`);
             const toolName = error?.toolName || 'Google service';
             let toolkitName = 'Google account';
-            if (toolName.includes('GOOGLESLIDES')) toolkitName = 'Google Slides';
-            else if (toolName.includes('GOOGLEDRIVE')) toolkitName = 'Google Drive';
-            else if (toolName.includes('GOOGLESHEETS')) toolkitName = 'Google Sheets';
+            if (toolName.includes('GOOGLESHEETS')) toolkitName = 'Google Sheets';
             else if (toolName.includes('GOOGLEDOCS')) toolkitName = 'Google Docs';
+            
+            // Handle Google Slides/Drive errors gracefully (shouldn't occur but handle if they do)
+            if (toolName.includes('GOOGLESLIDES') || toolName.includes('GOOGLEDRIVE')) {
+                const cookieUserId = req.cookies.get('googlesheet_user_id')?.value || 
+                                   req.cookies.get('googledoc_user_id')?.value;
+                let finalUserId = cookieUserId;
+                let needsCookie = false;
+                if (!finalUserId) {
+                    finalUserId = Math.floor(1000000000 + Math.random() * 9000000000).toString();
+                    needsCookie = true;
+                }
+                return createResponse({
+                    response: `I can create presentations directly in the browser! Let me create a presentation for you right here. What would you like the presentation to be about?`,
+                    hasSlides: false,
+                }, finalUserId, needsCookie);
+            }
             
             // Get userId from request for cookie setting
             const cookieUserId = req.cookies.get('googlesheet_user_id')?.value || 

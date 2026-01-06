@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   FiSend, FiPaperclip, FiSliders, FiGrid, FiMessageSquare, FiStar,
   FiImage, FiVideo, FiSearch, FiPhone, FiDownload, FiArrowRight,
-  FiBox, FiPlus, FiChevronDown, FiLoader, FiLink, FiCheck, FiX, FiEye, FiEyeOff, FiCloud
+  FiBox, FiPlus, FiChevronDown, FiLoader, FiLink, FiCheck, FiX, FiEye, FiEyeOff
 } from 'react-icons/fi';
 import { AnimatePresence, motion } from 'framer-motion';
 import { clsx } from 'clsx';
@@ -85,12 +85,11 @@ const WelcomeScreen = ({ onPromptSelect }: { onPromptSelect: (prompt: string) =>
   );
 };
 
-const MessageBubble = ({ message, activeSlide, setActiveSlide, downloadAsPPT, saveToGoogleDrive }: {
+const MessageBubble = ({ message, activeSlide, setActiveSlide, downloadAsPPT }: {
   message: Message;
   activeSlide: number;
   setActiveSlide: (slide: number) => void;
   downloadAsPPT: () => void;
-  saveToGoogleDrive: () => void;
 }) => {
   return (
     <motion.div
@@ -223,14 +222,6 @@ const MessageBubble = ({ message, activeSlide, setActiveSlide, downloadAsPPT, sa
                 >
                   <FiDownload className="w-4 h-4" />
                   Download PPT
-                </button>
-                <button
-                  onClick={saveToGoogleDrive}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-green-500 to-green-600 rounded-lg hover:from-green-600 hover:to-green-700 transition-all duration-200 shadow-sm hover:shadow-md"
-                  title="Save presentation to Google Drive as Google Slides"
-                >
-                  <FiCloud className="w-4 h-4" />
-                  Save to Google Drive
                 </button>
               </div>
             </div>
@@ -649,63 +640,7 @@ export default function SuperAgent({ className, userId }: SuperAgentProps) {
     }
   };
 
-  const saveToGoogleDrive = async () => {
-    if (currentSlides.length === 0) {
-      alert('No slides to save. Please generate a presentation first.');
-      return;
-    }
-
-    // Get userId from cookies or use the prop
-    const getCookie = (name: string) => {
-      const value = `; ${document.cookie}`;
-      const parts = value.split(`; ${name}=`);
-      if (parts.length === 2) return parts.pop()?.split(';').shift();
-      return null;
-    };
-
-    const cookieUserId = getCookie('googlesheet_user_id') || getCookie('googledoc_user_id');
-    const finalUserId = userId || cookieUserId;
-
-    // Note: The API will generate a userId if none is provided, but Google Slides creation
-    // requires connected Google accounts. We'll let the API handle the error messaging.
-    console.log('Saving to Google Drive. userId from prop:', userId, 'from cookies:', cookieUserId);
-
-    try {
-      const response = await fetch('/api/create-google-slides', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          slides: currentSlides,
-          title: 'AI Generated Presentation',
-          userId: finalUserId || undefined, // Let API generate if missing
-          style: 'professional',
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        // Check if it's an authentication error
-        if (data.error?.includes('sign in') || data.error?.includes('connect')) {
-          alert(`⚠️ ${data.error}\n\n${data.suggestion || 'Please visit /signin to connect your Google account.'}`);
-        } else {
-          throw new Error(data.error || 'Failed to create Google Slides');
-        }
-        return;
-      }
-
-      if (data.success && data.slidesUrl) {
-        // Open the Google Slides in a new tab
-        window.open(data.slidesUrl, '_blank');
-        alert(`✅ Presentation created successfully! Opening Google Slides...`);
-      } else {
-        throw new Error(data.error || 'Failed to create Google Slides');
-      }
-    } catch (error: any) {
-      console.error('Error creating Google Slides:', error);
-      alert(`Failed to create Google Slides: ${error?.message || 'Unknown error'}`);
-    }
-  };
+  // Removed saveToGoogleDrive function - presentations are created locally in frontend
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -792,7 +727,6 @@ export default function SuperAgent({ className, userId }: SuperAgentProps) {
                   activeSlide={activeSlide}
                   setActiveSlide={setActiveSlide}
                   downloadAsPPT={downloadAsPPT}
-                  saveToGoogleDrive={saveToGoogleDrive}
                 />
               ))}
               
