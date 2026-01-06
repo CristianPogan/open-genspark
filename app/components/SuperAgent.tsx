@@ -505,12 +505,25 @@ export default function SuperAgent({ className, userId }: SuperAgentProps) {
   };
 
   const saveToGoogleDrive = async () => {
-    if (currentSlides.length === 0) return;
-
-    if (!userId) {
-      alert('Please sign in to save presentations to Google Drive. Visit /signin to connect your Google account.');
+    if (currentSlides.length === 0) {
+      alert('No slides to save. Please generate a presentation first.');
       return;
     }
+
+    // Get userId from cookies or use the prop
+    const getCookie = (name: string) => {
+      const value = `; ${document.cookie}`;
+      const parts = value.split(`; ${name}=`);
+      if (parts.length === 2) return parts.pop()?.split(';').shift();
+      return null;
+    };
+
+    const cookieUserId = getCookie('googlesheet_user_id') || getCookie('googledoc_user_id');
+    const finalUserId = userId || cookieUserId;
+
+    // Note: The API will generate a userId if none is provided, but Google Slides creation
+    // requires connected Google accounts. We'll let the API handle the error messaging.
+    console.log('Saving to Google Drive. userId from prop:', userId, 'from cookies:', cookieUserId);
 
     try {
       const response = await fetch('/api/create-google-slides', {
@@ -519,7 +532,7 @@ export default function SuperAgent({ className, userId }: SuperAgentProps) {
         body: JSON.stringify({
           slides: currentSlides,
           title: 'AI Generated Presentation',
-          userId: userId,
+          userId: finalUserId || undefined, // Let API generate if missing
           style: 'professional',
         }),
       });
@@ -527,7 +540,13 @@ export default function SuperAgent({ className, userId }: SuperAgentProps) {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to create Google Slides');
+        // Check if it's an authentication error
+        if (data.error?.includes('sign in') || data.error?.includes('connect')) {
+          alert(`⚠️ ${data.error}\n\n${data.suggestion || 'Please visit /signin to connect your Google account.'}`);
+        } else {
+          throw new Error(data.error || 'Failed to create Google Slides');
+        }
+        return;
       }
 
       if (data.success && data.slidesUrl) {

@@ -28,15 +28,18 @@ export async function POST(req: NextRequest) {
         
         let finalUserId = cookieUserId || userId;
         
+        // Generate a temporary userId if none exists (for unauthenticated access)
+        let newCookie = false;
         if (!finalUserId) {
-            return NextResponse.json(
-                { 
-                    error: 'User ID is required to create Google Slides. Please sign in or provide userId.',
-                    suggestion: 'Visit /signin to connect your Google account.'
-                },
-                { status: 401 }
-            );
+            finalUserId = Math.floor(1000000000 + Math.random() * 9000000000).toString();
+            newCookie = true;
+            console.log(`[${requestId}] ✅ Generated new userId for Google Slides:`, finalUserId);
+        } else {
+            console.log(`[${requestId}] ✅ Using existing userId:`, finalUserId);
         }
+        
+        // Note: Even with a generated userId, Google Slides creation requires connected accounts
+        // The user will need to sign in to actually create slides, but we allow the attempt
         
         console.log(`[${requestId}] Creating Google Slides for userId:`, finalUserId);
         console.log(`[${requestId}] Slide count:`, slides.length);
@@ -141,13 +144,25 @@ export async function POST(req: NextRequest) {
                     
                     const slidesUrl = `https://docs.google.com/presentation/d/${presentationId}/edit`;
                     
-                    return NextResponse.json({
+                    const response = NextResponse.json({
                         success: true,
                         presentationId,
                         slidesUrl,
                         message: `Successfully created Google Slides presentation with ${slides.length} slides.`,
                         requestId
                     });
+                    
+                    // Set cookie if we generated a new userId
+                    if (newCookie && finalUserId) {
+                        response.cookies.set('googlesheet_user_id', finalUserId, {
+                            path: '/',
+                            maxAge: 60 * 60 * 24 * 365,
+                            sameSite: 'lax',
+                            secure: process.env.NODE_ENV === 'production',
+                        });
+                    }
+                    
+                    return response;
                 }
             } catch (directToolError: any) {
                 console.error(`[${requestId}] ❌ Direct tool creation failed:`, directToolError?.message);
@@ -190,13 +205,25 @@ export async function POST(req: NextRequest) {
         
         console.log(`[${requestId}] ========== Google Slides Created Successfully ==========`);
         
-        return NextResponse.json({
+        const response = NextResponse.json({
             success: true,
             presentationId,
             slidesUrl,
             message: `Successfully created Google Slides presentation with ${slides.length} slides.`,
             requestId
         });
+        
+        // Set cookie if we generated a new userId
+        if (newCookie && finalUserId) {
+            response.cookies.set('googlesheet_user_id', finalUserId, {
+                path: '/',
+                maxAge: 60 * 60 * 24 * 365,
+                sameSite: 'lax',
+                secure: process.env.NODE_ENV === 'production',
+            });
+        }
+        
+        return response;
         
     } catch (error: any) {
         console.error(`[${requestId}] ❌❌❌ Create Google Slides Error ❌❌❌`);
