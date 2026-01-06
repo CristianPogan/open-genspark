@@ -283,7 +283,7 @@ Generate substantial, professional content that accurately reflects the provided
                     });
 
                     // Add HTML to each slide using the fixed template
-                    const slidesWithHTML = object.slides.map(slide => ({
+                    const slidesWithHTML = object.slides.map((slide: any) => ({
                         ...slide,
                         html: generateSlideHTML(slide, style)
                     }));
@@ -380,39 +380,57 @@ async function initializePuppeteerTool() {
 
 // Remove the old template functions since we now use generateSlideHTML
 
+// Helper function to create response with optional cookie
+function createResponse(data: any, userId?: string, setCookie: boolean = false): NextResponse {
+    const response = NextResponse.json(data);
+    if (setCookie && userId) {
+        response.cookies.set('googlesheet_user_id', userId, {
+            path: '/',
+            maxAge: 60 * 60 * 24 * 365,
+            sameSite: 'lax',
+            secure: process.env.NODE_ENV === 'production',
+        });
+    }
+    return response;
+}
+
 export async function POST(req: NextRequest) {
     try {
-        const { prompt, selectedTool, conversationHistory, userId, sheetUrl, docUrl } = await req.json();
+        const { prompt, selectedTool, conversationHistory, userId: bodyUserId, sheetUrl, docUrl } = await req.json();
         
-        // Validate userId is provided
+        // Get userId from cookies or request body, generate one if missing
+        let userId = req.cookies.get('googlesheet_user_id')?.value || 
+                     req.cookies.get('googledoc_user_id')?.value || 
+                     bodyUserId;
+        
+        // Generate a temporary userId if none exists (for unauthenticated access)
+        let newCookie = false;
         if (!userId) {
-            return NextResponse.json(
-                { error: 'Authentication required. Please sign in.' },
-                { status: 401 }
-            );
+            userId = Math.floor(1000000000 + Math.random() * 9000000000).toString();
+            newCookie = true;
         }
 
         // If a new sheet is connected, ask the user what to do next.
         if (sheetUrl && !conversationHistory.some((m: any) => m.content.includes('Spreadsheet Connected'))) {
-            return NextResponse.json({
+            return createResponse({
                 response: `📊 **Spreadsheet Connected!** I've successfully connected to your Google Sheet. What would you like to do with it? For example, you can ask me to:
 
 - "Summarize the key insights from this data"
 `,
                 hasSlides: false,
-            });
+            }, userId, newCookie);
         }
 
         // If a new doc is connected, ask the user what to do next.
         if (docUrl && !conversationHistory.some((m: any) => m.content.includes('Document Connected'))) {
-            return NextResponse.json({
+            return createResponse({
                 response: `📄 **Document Connected!** I've successfully connected to your Google Doc. What would you like to do with it? For example, you can ask me to:
 
 - "Summarize this document"
 - "Extract the key action items"
 - "Check for grammatical errors"`,
                 hasSlides: false,
-            });
+            }, userId, newCookie);
         }
         
         // Initialize the custom slide generation tool
@@ -514,22 +532,22 @@ Updating google docs means updating the markdown of the document/ deleting all c
             maxSteps: 50,
         });
 
-        const slideExecution = toolResults.find(result => result.toolName === SLIDE_GENERATOR_TOOL);
+        const slideExecution = toolResults.find((result: any) => result.toolName === SLIDE_GENERATOR_TOOL);
 
         if (slideExecution) {
             const slideData = slideExecution.result.data.slides;
-            return NextResponse.json({
+            return createResponse({
                 response: text,
                 slides: slideData,
                 hasSlides: true,
-            });
+            }, userId, newCookie);
         }
 
 
-        return NextResponse.json({
+        return createResponse({
             response: text,
             hasSlides: false,
-        });
+        }, userId, newCookie);
 
     } catch (error) {
         console.error('Connection error:', error);
