@@ -800,7 +800,17 @@ export async function POST(req: NextRequest) {
         
         console.log(`[${requestId}] Final tool count:`, Object.keys(allTools).length);
         
-        let systemPrompt = `You are Super Agent, a helpful and efficient AI assistant powered by Composio. Your main goal is to assist users by using a suite of powerful tools to accomplish tasks.
+        // Build system prompt with account connection status
+        let systemPrompt = `You are Super Agent, a helpful and efficient AI assistant powered by Composio. Your main goal is to assist users by using a suite of powerful tools to accomplish tasks.`;
+        
+        // Add warning about connected accounts if none are found
+        if (!hasConnectedGoogleAccount) {
+            systemPrompt += `\n\n⚠️ CRITICAL: The user has NOT connected their Google account. Before using ANY Google tools (Google Sheets, Docs, Drive, Slides), you MUST inform them they need to visit /signin to connect their Google account first. Do NOT attempt to use Google tools without a connected account - this will cause errors and fail.`;
+        } else {
+            systemPrompt += `\n\n✅ The user has connected their Google account, so you can use Google tools (Sheets, Docs, Drive, Slides) when appropriate.`;
+        }
+        
+        systemPrompt += `\n\n**Core Principles:**
 
 **Core Principles:**
 1.  **Action-Oriented:** Your primary focus is on using tools to complete user requests. While you are conversational, always look for an opportunity to take action.
