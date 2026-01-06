@@ -347,9 +347,10 @@ export default function SuperAgent({ className, userId }: SuperAgentProps) {
     const msg = (typeof message === 'string' ? message : prompt).trim();
     if (!msg || isLoading) return;
 
-    // Check if the prompt contains a spreadsheet URL
+    // Check if the prompt contains a spreadsheet, doc, or slides URL
     const detectedSheetUrl = detectSpreadsheetUrl(msg);
     const detectedDocUrl = detectDocumentUrl(msg);
+    const detectedSlidesUrl = detectSlidesUrl(msg);
 
     // Always switch to the correct sidebar if a URL is detected
     if (detectedSheetUrl && validateSheetUrl(detectedSheetUrl)) {
@@ -365,6 +366,7 @@ export default function SuperAgent({ className, userId }: SuperAgentProps) {
       setShowDocument(true);
       setShowSpreadsheet(false); // Always hide spreadsheet sidebar if doc is detected
     }
+    // Note: Google Slides URLs are passed to API but don't need a sidebar
 
     const userMessage: Message = {
       id: `user-${Date.now()}`,
