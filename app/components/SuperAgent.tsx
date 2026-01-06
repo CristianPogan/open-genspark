@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   FiSend, FiPaperclip, FiSliders, FiGrid, FiMessageSquare, FiStar,
   FiImage, FiVideo, FiSearch, FiPhone, FiDownload, FiArrowRight,
-  FiBox, FiPlus, FiChevronDown, FiLoader, FiLink, FiCheck, FiX, FiEye, FiEyeOff
+  FiBox, FiPlus, FiChevronDown, FiLoader, FiLink, FiCheck, FiX, FiEye, FiEyeOff, FiCloud
 } from 'react-icons/fi';
 import { AnimatePresence, motion } from 'framer-motion';
 import { clsx } from 'clsx';
@@ -228,7 +228,7 @@ const MessageBubble = ({ message, activeSlide, setActiveSlide, downloadAsPPT, sa
                   onClick={saveToGoogleDrive}
                   className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-green-500 to-green-600 rounded-lg hover:from-green-600 hover:to-green-700 transition-all duration-200 shadow-sm hover:shadow-md"
                 >
-                  <FiLink className="w-4 h-4" />
+                  <FiCloud className="w-4 h-4" />
                   Save to Google Drive
                 </button>
               </div>
